@@ -84,6 +84,14 @@ def test_load_app_config_rejects_unreadable_files(tmp_path: Path) -> None:
             load_app_config(path)
 
 
+def test_load_app_config_rejects_non_utf8_file(tmp_path: Path) -> None:
+    path = tmp_path / "latin.yml"
+    path.write_bytes(b"prompt: caf\xe9")
+
+    with pytest.raises(ConfigError, match=r"latin\.yml"):
+        load_app_config(path)
+
+
 def test_load_channels_defaults_title_filter_to_empty(tmp_path: Path) -> None:
     path = write_yaml(tmp_path, {"channels": [{"name": "A", "channel_id": "UC1"}]}, "channels.yml")
 
@@ -100,6 +108,41 @@ def test_load_channels_reads_title_filter(tmp_path: Path) -> None:
     assert load_channels(path)[0].title_filter == ("bolsa",)
 
 
+def test_load_channels_treats_null_title_filter_as_empty(tmp_path: Path) -> None:
+    entry = {"name": "A", "channel_id": "UC1", "title_filter": None}
+    path = write_yaml(tmp_path, {"channels": [entry]}, "channels.yml")
+
+    assert load_channels(path)[0].title_filter == ()
+
+
+def test_load_channels_strips_words_and_rejects_blank_ones(tmp_path: Path) -> None:
+    entry: dict[str, Any] = {"name": "A", "channel_id": "UC1", "title_filter": [" bolsa "]}
+    path = write_yaml(tmp_path, {"channels": [entry]}, "channels.yml")
+    assert load_channels(path)[0].title_filter == ("bolsa",)
+
+    entry["title_filter"] = ["bolsa", "  "]
+    path = write_yaml(tmp_path, {"channels": [entry]}, "channels.yml")
+    with pytest.raises(ConfigError, match=r"channels\[0\]\.title_filter"):
+        load_channels(path)
+
+
+def test_load_channels_strips_ids_and_names(tmp_path: Path) -> None:
+    path = write_yaml(
+        tmp_path, {"channels": [{"name": " A ", "channel_id": " UC1 "}]}, "channels.yml"
+    )
+
+    (channel,) = load_channels(path)
+
+    assert (channel.name, channel.channel_id) == ("A", "UC1")
+
+
+def test_load_channels_rejects_empty_list(tmp_path: Path) -> None:
+    path = write_yaml(tmp_path, {"channels": []}, "channels.yml")
+
+    with pytest.raises(ConfigError, match="channels"):
+        load_channels(path)
+
+
 def test_load_channels_rejects_channel_without_channel_id(tmp_path: Path) -> None:
     path = write_yaml(tmp_path, {"channels": [{"name": "A"}]}, "channels.yml")
 
@@ -108,7 +151,7 @@ def test_load_channels_rejects_channel_without_channel_id(tmp_path: Path) -> Non
 
 
 def test_load_channels_rejects_duplicate_channel_id(tmp_path: Path) -> None:
-    entries = [{"name": "A", "channel_id": "UC1"}, {"name": "B", "channel_id": "UC1"}]
+    entries = [{"name": "A", "channel_id": "UC1"}, {"name": "B", "channel_id": "UC1 "}]
     path = write_yaml(tmp_path, {"channels": entries}, "channels.yml")
 
     with pytest.raises(ConfigError, match="UC1"):
@@ -123,11 +166,17 @@ ENV = {
 
 
 @pytest.mark.parametrize("missing", sorted(ENV))
-def test_load_settings_requires_telegram_token(missing: str) -> None:
+def test_load_settings_requires_every_required_variable(missing: str) -> None:
     env = {k: v for k, v in ENV.items() if k != missing}
 
     with pytest.raises(ConfigError, match=missing):
         load_settings(env)
+
+
+@pytest.mark.parametrize("blank", sorted(ENV))
+def test_load_settings_rejects_whitespace_only_variable(blank: str) -> None:
+    with pytest.raises(ConfigError, match=blank):
+        load_settings({**ENV, blank: "   "})
 
 
 def test_load_settings_applies_dir_defaults() -> None:
@@ -136,6 +185,12 @@ def test_load_settings_applies_dir_defaults() -> None:
     assert settings.config_dir == Path("/config")
     assert settings.state_dir == Path("/state")
     assert settings.storage_state_path == Path("/secrets/storage_state.json")
+
+
+def test_load_settings_blank_dirs_fall_back_to_defaults() -> None:
+    settings = load_settings({**ENV, "CONFIG_DIR": "", "STATE_DIR": "  "})
+
+    assert (settings.config_dir, settings.state_dir) == (Path("/config"), Path("/state"))
 
 
 def test_load_settings_honours_dir_overrides() -> None:

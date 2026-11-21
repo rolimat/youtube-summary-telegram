@@ -7,8 +7,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import yaml
 
 
-class ConfigError(Exception):
-    """Invalid configuration; the message names the file and the offending key."""
+class ConfigError(Exception): ...
 
 
 @dataclass(frozen=True)
@@ -46,7 +45,7 @@ class Settings:
 def _load_mapping(path: Path) -> dict[str, Any]:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as error:
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as error:
         raise ConfigError(f"{path}: cannot read file: {error}") from error
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: top-level document must be a mapping")
@@ -60,11 +59,11 @@ def _section(path: Path, parent: Mapping[str, Any], key: str) -> Mapping[str, An
     return value
 
 
-def _text(path: Path, parent: Mapping[str, Any], key: str, label: str) -> str:
+def _text(path: Path, parent: Mapping[str, Any], key: str, label: str | None = None) -> str:
     value = parent.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise ConfigError(f"{path}: '{label}' must be a non-empty string")
-    return value
+        raise ConfigError(f"{path}: '{label or key}' must be a non-empty string")
+    return value.strip()
 
 
 def _positive_int(path: Path, parent: Mapping[str, Any], key: str) -> int:
@@ -101,7 +100,7 @@ def load_app_config(path: Path) -> AppConfig:
         poll_interval_minutes=_positive_int(path, data, "poll_interval_minutes"),
         active_hours=_active_hours(path, data),
         max_video_age_hours=_positive_int(path, data, "max_video_age_hours"),
-        prompt=_text(path, data, "prompt", "prompt"),
+        prompt=_text(path, data, "prompt"),
     )
 
 
@@ -109,20 +108,20 @@ def _channel(path: Path, index: int, entry: Any) -> Channel:
     if not isinstance(entry, dict):
         raise ConfigError(f"{path}: 'channels[{index}]' must be a mapping")
     where = f"channels[{index}]"
-    filters = entry.get("title_filter", [])
-    if not isinstance(filters, list) or not all(isinstance(f, str) for f in filters):
-        raise ConfigError(f"{path}: '{where}.title_filter' must be a list of strings")
+    filters = entry.get("title_filter") or []
+    if not isinstance(filters, list) or not all(isinstance(f, str) and f.strip() for f in filters):
+        raise ConfigError(f"{path}: '{where}.title_filter' must be a list of non-empty strings")
     return Channel(
         name=_text(path, entry, "name", f"{where}.name"),
         channel_id=_text(path, entry, "channel_id", f"{where}.channel_id"),
-        title_filter=tuple(filters),
+        title_filter=tuple(f.strip() for f in filters),
     )
 
 
 def load_channels(path: Path) -> tuple[Channel, ...]:
     entries = _load_mapping(path).get("channels")
-    if not isinstance(entries, list):
-        raise ConfigError(f"{path}: 'channels' must be a list")
+    if not isinstance(entries, list) or not entries:
+        raise ConfigError(f"{path}: 'channels' must be a non-empty list")
     channels = tuple(_channel(path, i, entry) for i, entry in enumerate(entries))
     seen: set[str] = set()
     for channel in channels:
@@ -144,6 +143,6 @@ def load_settings(environ: Mapping[str, str]) -> Settings:
         telegram_bot_token=_required_env(environ, "TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=_required_env(environ, "TELEGRAM_CHAT_ID"),
         storage_state_path=Path(_required_env(environ, "NOTEBOOKLM_STORAGE_STATE_PATH")),
-        config_dir=Path(environ.get("CONFIG_DIR", "/config")),
-        state_dir=Path(environ.get("STATE_DIR", "/state")),
+        config_dir=Path(environ.get("CONFIG_DIR", "").strip() or "/config"),
+        state_dir=Path(environ.get("STATE_DIR", "").strip() or "/state"),
     )
