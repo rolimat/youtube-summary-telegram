@@ -20,7 +20,9 @@ jobs:
             (steps.meta.outputs.package-ecosystem == 'uv'
               && steps.meta.outputs.update-type == 'version-update:semver-patch')
             || ((steps.meta.outputs.package-ecosystem == 'github_actions'
-                || steps.meta.outputs.package-ecosystem == 'pre_commit')
+                || steps.meta.outputs.package-ecosystem == 'github-actions'
+                || steps.meta.outputs.package-ecosystem == 'pre_commit'
+                || steps.meta.outputs.package-ecosystem == 'pre-commit')
               && (steps.meta.outputs.update-type == 'version-update:semver-patch'
                 || steps.meta.outputs.update-type == 'version-update:semver-minor'))
             || (steps.meta.outputs.package-ecosystem == 'docker'
