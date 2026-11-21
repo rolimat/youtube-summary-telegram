@@ -15,3 +15,4 @@ secrets/
 seen.json*
 storage_state.json
 scripts/server.env
+.superpowers/

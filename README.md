@@ -31,7 +31,11 @@ Every `poll_interval_minutes` the service runs one iteration:
   by the video. A video NotebookLM cannot process yet is deferred to the next iteration.
 - **Send**: the message is stored in `seen.json` first, so a failed send is retried (3 send attempts in total)
   without calling NotebookLM again. At most 3 send attempts in total. A Telegram rejection stops that iteration's deliveries.
+- **Quota**: when NotebookLM's chat quota is exhausted the iteration stops with a warning, no failure is
+  recorded, and NotebookLM is not called again until the pause ends (the server's `retry_after`, else 1 h).
+  The videos stay unseen and are retried until they age out.
 - **Give up**: after 3 failed summarise attempts a video is dropped and logged as `Given up`.
+  Authentication failures never count: the videos wait for you to renew the session.
 - **Telegram**: `parse_mode: HTML`. Long messages are split into chunks: header on the first,
   link on the last.
 

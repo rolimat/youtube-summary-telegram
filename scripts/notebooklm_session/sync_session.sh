@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Copies the desktop NotebookLM session to the server. Pass --force to log in again first.
+# Paths with spaces are not supported.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,6 +12,7 @@ source "$env_file"
 : "${SERVER_YST_HOME:?set SERVER_YST_HOME in server.env}"
 
 case "$SERVER_YST_HOME" in
+  *[[:space:]]*) echo "SERVER_YST_HOME must not contain whitespace" >&2; exit 1 ;;
   /*) ;;
   *) echo "SERVER_YST_HOME must be an absolute path (start with /)" >&2; exit 1 ;;
 esac
@@ -32,4 +34,4 @@ remote_dir="$SERVER_YST_HOME/secrets/notebooklm"
 ssh "$SERVER_SSH_TARGET" "install -d -m 700 '$remote_dir'"
 rsync --chmod=u=rw,go-rwx \
   "${NOTEBOOKLM_HOME:-$HOME/.notebooklm}/profiles/$NOTEBOOKLM_PROFILE/storage_state.json" \
-  "$SERVER_SSH_TARGET:'$remote_dir/storage_state.json'"
+  "$SERVER_SSH_TARGET:$remote_dir/storage_state.json"

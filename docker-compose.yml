@@ -7,6 +7,10 @@ services:
     restart: unless-stopped
     user: "${YST_UID:-1000}:${YST_GID:-1000}"
     stop_grace_period: 2m
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: [/tmp]
     env_file: ${YST_HOME:?set YST_HOME}/config/.env
     environment:
       CONFIG_DIR: /config
