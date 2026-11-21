@@ -37,9 +37,9 @@ async def test_send_returns_false_on_non_200(caplog: pytest.LogCaptureFixture) -
     assert "bad " * 76 not in caplog.text
 
 
-async def test_send_returns_false_when_ok_is_false() -> None:
-    transport = httpx.MockTransport(lambda r: httpx.Response(200, json={"ok": False}))
-    assert await _client(transport).send("x") is False
+async def test_send_is_true_on_any_200_body() -> None:
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, text="not json"))
+    assert await _client(transport).send("x") is True
 
 
 async def test_send_returns_false_on_transport_error(caplog: pytest.LogCaptureFixture) -> None:

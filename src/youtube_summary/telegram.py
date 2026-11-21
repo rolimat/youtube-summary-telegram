@@ -39,7 +39,4 @@ class TelegramClient:
             body = response.text[:_BODY_LOG_CHARS].replace(self._token, "<redacted>")
             logger.error("telegram send rejected: %s %s", response.status_code, body)
             return False
-        try:
-            return bool(response.json().get("ok"))
-        except ValueError:
-            return False
+        return True
