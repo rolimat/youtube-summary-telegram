@@ -1,0 +1,49 @@
+[project]
+name = "youtube-summary-telegram"
+version = "0.1.0"
+description = "Summarise YouTube videos with NotebookLM and post them to Telegram"
+requires-python = ">=3.15"
+license = "Apache-2.0"
+dependencies = [
+    "httpx",
+    "pyyaml",
+    "tzdata",
+    "notebooklm-py==0.8.6",
+]
+
+[project.scripts]
+youtube-summary = "youtube_summary.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "mypy",
+    "types-PyYAML",
+    "ruff",
+    "pre-commit",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.14"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py315"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+python_version = "3.15"
+mypy_path = "src"
+
+[tool.uv.build-backend]
+module-name = "youtube_summary"

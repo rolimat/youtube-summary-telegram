@@ -85,6 +85,7 @@ CLAUDE.md, README.md, .pre-commit-config.yaml, .gitignore
 ```python
 def test_main_module_is_importable() -> None:
     from youtube_summary.main import main
+
     assert callable(main)
 ```
 
