@@ -1,0 +1,9 @@
+notebooklm:
+  notebook_id: "<notebook-id-from-notebooklm-url>"
+poll_interval_minutes: 15
+active_hours: {start: 7, end: 23, timezone: Europe/Madrid}
+max_video_age_hours: 48
+# The prompt must make NotebookLM answer with ONLY a JSON object:
+#   {"summary": str, "key_points": [str]}
+# "summary" is the video summary text, "key_points" a list of short strings.
+prompt: "<your prompt: ask for ONLY a JSON object {\"summary\": str, \"key_points\": [str]}>"

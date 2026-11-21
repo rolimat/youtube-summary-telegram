@@ -1,0 +1,6 @@
+channels:
+  - name: "Example Channel"
+    channel_id: "UCxxxxxxxxxxxxxxxxxxxxxx"
+    title_filter: ["bolsa", "inflación"]  # optional: only titles containing one of these
+  - name: "Another Channel"
+    channel_id: "UCyyyyyyyyyyyyyyyyyyyyyy"
