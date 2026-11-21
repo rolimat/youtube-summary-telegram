@@ -324,9 +324,13 @@ from notebooklm import NotebookLMClient
 from notebooklm.exceptions import AuthError, HeadlessReauthError, NotebookLMError, SourceError
 
 async with NotebookLMClient.from_storage(str(storage_state_path)) as client:
-    for source in await client.sources.list(notebook_id):
-        await client.sources.delete(notebook_id, source.id)
-    await client.sources.add_url(notebook_id, video_url, wait=True)   # raises SourceError if not processable
+    sources = await client.sources.list(notebook_id)
+    if sources:
+        await client.sources.delete_many(notebook_id, [s.id for s in sources])
+    await client.sources.add_url(notebook_id, video_url, wait=True, wait_timeout=600)   # raises SourceError if not processable
+    conversation_id = await client.chat.get_conversation_id(notebook_id)
+    if conversation_id is not None:
+        await client.chat.delete_conversation(notebook_id, conversation_id)
     result = await client.chat.ask(notebook_id, prompt)
     answer: str = result.answer
 
@@ -335,6 +339,9 @@ async with NotebookLMClient.from_storage(str(storage_state_path)) as client:
     await client.notebooks.list()
 ```
 
+- `chat.ask` without a `conversation_id` continues the notebook's current conversation,
+  so each video would see earlier videos' Q&A. Delete the current conversation before
+  every ask to keep each summary independent.
 - Use `from_storage(...)` directly as the async context manager (canonical form).
   Do **not** `await from_storage(...)`: that form is deprecated and removed in 1.0.
 - `AuthError` is a subclass of `RPCError` and `SourceTimeoutError` of `SourceError`;
