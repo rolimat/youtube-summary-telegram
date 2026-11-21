@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 import pytest
+from notebooklm import SourceType
 from notebooklm._auth.cookie_policy import RequiredCookieValidationError
 from notebooklm._auth.cookie_semantics import CookieRowError
 from notebooklm._auth.cookie_types import StorageStateValidationError
@@ -31,6 +32,8 @@ from youtube_summary.summarizer import (
 @dataclass
 class _Source:
     id: str
+    kind: SourceType = SourceType.YOUTUBE
+    url: str | None = None
 
 
 @dataclass
@@ -41,7 +44,7 @@ class _Answer:
 class _FakeClient:
     def __init__(
         self,
-        sources: list[str],
+        sources: Sequence[str | _Source],
         fail: Exception | None = None,
         conversation: str | None = None,
         ask_fail: Exception | None = None,
@@ -59,7 +62,7 @@ class _FakeClient:
         self.calls.append(("list", *args))
         if self._fail:
             raise self._fail
-        return [_Source(i) for i in self._sources]
+        return [_Source(i) if isinstance(i, str) else i for i in self._sources]
 
     async def delete_many(self, notebook_id: str, source_ids: Sequence[str]) -> None:
         self.calls.append(("delete_many", notebook_id, *source_ids))
@@ -213,3 +216,23 @@ async def test_quota_pause_defaults_to_an_hour_and_spares_ping() -> None:
     with pytest.raises(NotebookQuotaError):
         await summarizer.summarize("u", "p")
     assert len(client.calls) == calls
+
+
+async def test_summarize_deletes_only_video_sources() -> None:
+    sources = [
+        _Source("yt"),
+        _Source("drive", SourceType.GOOGLE_DRIVE_VIDEO),
+        _Source("pdf", SourceType.PDF),
+        _Source("txt", SourceType.PASTED_TEXT),
+        _Source("old", SourceType.UNKNOWN, "https://youtu.be/x"),
+        _Source("doc", SourceType.UNKNOWN, "https://example.org/a"),
+    ]
+    client = _FakeClient(sources)
+    await _summarizer(client).summarize("u", "p")
+    assert ("delete_many", "nb", "yt", "drive", "old") in client.calls
+
+
+async def test_summarize_skips_delete_without_video_sources() -> None:
+    client = _FakeClient([_Source("pdf", SourceType.PDF)])
+    await _summarizer(client).summarize("u", "p")
+    assert "delete_many" not in [call[0] for call in client.calls]

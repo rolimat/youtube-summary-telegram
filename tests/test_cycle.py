@@ -508,3 +508,14 @@ async def test_feeds_are_fetched_concurrently(tmp_path: Path) -> None:
         result = await run(deps)
 
     assert result.sent == 2
+
+
+async def test_shorts_are_never_summarised_or_marked_seen(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    short = make_video("s", url="https://www.youtube.com/shorts/s")
+    summarizer = FakeSummarizer()
+
+    await run(make_deps(tmp_path, feed(short), summarizer))
+
+    assert summarizer.summarize_calls == []
+    assert not load(tmp_path).is_seen("s")

@@ -18,6 +18,7 @@ from notebooklm.exceptions import (
     RateLimitError,
     SourceError,
 )
+from notebooklm.types import SourceType
 
 _SUMMARIZE_TIMEOUT_SECONDS = 900
 _PING_TIMEOUT_SECONDS = 60
@@ -31,6 +32,8 @@ _ENTER_AUTH_ERRORS = (
     CookieRowError,
     json.JSONDecodeError,
 )
+_VIDEO_KINDS = (SourceType.YOUTUBE, SourceType.GOOGLE_DRIVE_VIDEO)
+_VIDEO_HOSTS = ("youtube.com", "youtu.be")
 _LIBRARY_ERRORS = (NotebookLMError, TimeoutError, httpx.HTTPError, *_ENTER_AUTH_ERRORS)
 
 
@@ -105,12 +108,20 @@ class NotebookLMSummarizer:
 
     async def _reset(self, client: Any, video_url: str) -> None:
         sources = await client.sources.list(self._notebook_id)
-        if sources:
-            await client.sources.delete_many(self._notebook_id, [s.id for s in sources])
+        video_ids = [s.id for s in sources if _is_video_source(s)]
+        if video_ids:
+            await client.sources.delete_many(self._notebook_id, video_ids)
         await client.sources.add_url(
             self._notebook_id, video_url, wait=True, wait_timeout=_SOURCE_WAIT_SECONDS
         )
         await reset_conversation(client, self._notebook_id)
+
+
+def _is_video_source(source: Any) -> bool:
+    kind = getattr(source, "kind", SourceType.UNKNOWN)
+    if kind != SourceType.UNKNOWN:
+        return bool(kind in _VIDEO_KINDS)
+    return any(host in (source.url or "") for host in _VIDEO_HOSTS)
 
 
 async def reset_conversation(client: Any, notebook_id: str) -> None:

@@ -27,8 +27,9 @@ Every `poll_interval_minutes` the service runs one iteration:
   fails during bootstrap nothing is saved and it is retried next iteration (fix or remove the channel).
 - **Dedup**: a video is processed once. Videos older than `max_video_age_hours` or not matching the
   channel's `title_filter` are ignored.
-- **Summarise**: each video gets its own NotebookLM conversation; the notebook's sources are replaced
-  by the video. A video NotebookLM cannot process yet is deferred to the next iteration.
+- **Summarise**: each video gets its own NotebookLM conversation; only the previous video sources are
+  replaced by the new video; reference sources you add to the notebook (taxonomy, tickers, ...) are kept and
+  used in every answer. YouTube Shorts are skipped. A video NotebookLM cannot process yet is deferred to the next iteration.
 - **Send**: the message is stored in `seen.json` first, so a failed send is retried (3 send attempts in total)
   without calling NotebookLM again. At most 3 send attempts in total. A Telegram rejection stops that iteration's deliveries.
 - **Quota**: when NotebookLM's chat quota is exhausted the iteration stops with a warning, no failure is
@@ -50,6 +51,7 @@ Every `poll_interval_minutes` the service runs one iteration:
 ## Setup
 
 1. **Notebook.** Create a dedicated NotebookLM notebook. Its id is the last URL path segment.
+   You may add permanent reference sources (documents, notes); the service only deletes video sources.
 2. **Session.** `cp scripts/server.env.sample scripts/server.env`, fill it, then run:
 
    ```bash

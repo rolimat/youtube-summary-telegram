@@ -135,13 +135,15 @@ on SIGTERM). One iteration:
 4. **Retry unsent messages** (`pending`, oldest first) with the send rule below. No
    NotebookLM call.
 5. **Collect candidates.** For each channel: fetch the RSS feed, keep entries that are
-   not seen, not pending, younger than `max_video_age_hours`, and match the channel's
+   not Shorts (alternate link path contains `/shorts/`), not seen, not pending, younger than `max_video_age_hours`, and match the channel's
    `title_filter` (case-insensitive substring match of any word; empty or missing =
    all videos). A feed that fails (HTTP error, timeout, malformed XML) is logged and
    skipped. One bad channel never stops the others.
 6. **Process candidates oldest first.** Before each video, stop if SIGTERM arrived.
-   - NotebookLM (900 s timeout): delete every source in the dedicated notebook, add the
-     video URL (wait until processed), ask the configured prompt. One chat query per
+   - NotebookLM (900 s timeout): delete the previous video sources (kind `youtube` or
+     `google_drive_video`; URL contains `youtube.com`/`youtu.be` if the kind is unknown) of
+     the dedicated notebook, keeping every other source as permanent reference, add the
+     video URL (wait until processed), ask the configured prompt over all sources. One chat query per
      video.
    - Video not processable yet (`SourceError`, e.g. a premiere or a live stream still
      running): leave it unseen; retried next iteration until it ages out. This costs
@@ -175,7 +177,8 @@ mark it seen, save. NotebookLM is never called again for a pending video.
 Telegram accepted it, set `auth_alert_sent` and save. Videos stay unseen and are
 processed after the session is renewed, if still inside the age window.
 
-- Shorts, live streams and premieres get no special handling.
+- Shorts are never processed (not summarised, sent or marked seen). Live streams and
+  premieres get no special handling.
 - `active_hours` are inclusive on both ends, by local hour in `timezone`. Example:
   start 7, end 23 → summarises and sends from 07:00 to 23:59.
 - Logs go to stdout. One line per video outcome plus one summary line per iteration.
@@ -335,8 +338,9 @@ from notebooklm.exceptions import AuthError, HeadlessReauthError, NotebookLMErro
 
 async with NotebookLMClient.from_storage(str(storage_state_path)) as client:
     sources = await client.sources.list(notebook_id)
-    if sources:
-        await client.sources.delete_many(notebook_id, [s.id for s in sources])
+    video_ids = [s.id for s in sources if s.kind in (SourceType.YOUTUBE, SourceType.GOOGLE_DRIVE_VIDEO)]
+    if video_ids:   # other sources are permanent reference documents; unknown kind: fall back to a youtube.com/youtu.be URL
+        await client.sources.delete_many(notebook_id, video_ids)
     await client.sources.add_url(notebook_id, video_url, wait=True, wait_timeout=600)   # raises SourceError if not processable
     conversation_id = await client.chat.get_conversation_id(notebook_id)
     if conversation_id is not None:
