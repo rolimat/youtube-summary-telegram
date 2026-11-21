@@ -120,9 +120,11 @@ def _label(video: Video) -> str:
     return f"{video.channel_name} — {video.title}"
 
 
-def _is_candidate(state: SeenState, channel: Channel, video: Video, oldest: datetime) -> bool:
+def _is_candidate(
+    deps: CycleDeps, state: SeenState, channel: Channel, video: Video, oldest: datetime
+) -> bool:
     return (
-        not is_short(video)
+        not (deps.config.skip_shorts and is_short(video))
         and not state.is_seen(video.video_id)
         and video.video_id not in state.pending
         and video.published_at > oldest
@@ -137,7 +139,7 @@ async def _collect_candidates(
     videos: dict[str, Video] = {}
     for channel, fetched in zip(deps.channels, await _fetch_all(deps, result), strict=True):
         for video in fetched or []:
-            if _is_candidate(state, channel, video, oldest):
+            if _is_candidate(deps, state, channel, video, oldest):
                 videos.setdefault(video.video_id, video)
     return sorted(videos.values(), key=lambda video: video.published_at)
 

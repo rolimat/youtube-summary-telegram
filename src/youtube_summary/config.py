@@ -34,6 +34,7 @@ class AppConfig:
     max_video_age_hours: int
     prompt: str
     texts: Texts
+    skip_shorts: bool
 
 
 @dataclass(frozen=True)
@@ -103,6 +104,13 @@ def _texts(path: Path, data: Mapping[str, Any]) -> Texts:
     return texts
 
 
+def _skip_shorts(path: Path, data: Mapping[str, Any]) -> bool:
+    value = data.get("skip_shorts", True)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{path}: 'skip_shorts' must be true or false")
+    return value
+
+
 def load_app_config(path: Path) -> AppConfig:
     data = _load_mapping(path)
     notebook = _section(path, data, "notebooklm")
@@ -113,6 +121,7 @@ def load_app_config(path: Path) -> AppConfig:
         max_video_age_hours=_positive_int(path, data, "max_video_age_hours"),
         prompt=_text(path, data, "prompt"),
         texts=_texts(path, data),
+        skip_shorts=_skip_shorts(path, data),
     )
 
 

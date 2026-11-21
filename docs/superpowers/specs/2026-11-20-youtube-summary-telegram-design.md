@@ -80,7 +80,7 @@ weekly summaries. The owner only wants a readable summary per video in Telegram.
 | File | In git | Content |
 |---|---|---|
 | `.env` | no — `.env.sample` committed | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `YST_HOME`, optional `YST_UID`/`YST_GID`; `NOTEBOOKLM_STORAGE_STATE_PATH`, `CONFIG_DIR`, `STATE_DIR` only when running without Docker |
-| `config.yml` | no — `config.yml.sample` committed | `notebooklm.notebook_id`, `poll_interval_minutes`, `active_hours.{start,end,timezone}`, `max_video_age_hours`, `prompt`, optional `language` (`en` default, or `es`; texts live in `texts.py`) |
+| `config.yml` | no — `config.yml.sample` committed | `notebooklm.notebook_id`, `poll_interval_minutes`, `active_hours.{start,end,timezone}`, `max_video_age_hours`, `prompt`, optional `skip_shorts` (boolean, default `true`), optional `language` (`en` default, or `es`; texts live in `texts.py`) |
 | `channels.yml` | no — `channels.yml.sample` committed | list of `{name, channel_id, title_filter?: [str]}` |
 | `storage_state.json` | never | NotebookLM session cookies (Playwright storage state) |
 | `seen.json` | never (in `STATE_DIR`) | handled ids, unsent messages, failure counts, auth-alert flag |
@@ -135,7 +135,7 @@ on SIGTERM). One iteration:
 4. **Retry unsent messages** (`pending`, oldest first) with the send rule below. No
    NotebookLM call.
 5. **Collect candidates.** For each channel: fetch the RSS feed, keep entries that are
-   not Shorts (alternate link path contains `/shorts/`), not seen, not pending, younger than `max_video_age_hours`, and match the channel's
+   not Shorts when `skip_shorts` is true (alternate link path contains `/shorts/`), not seen, not pending, younger than `max_video_age_hours`, and match the channel's
    `title_filter` (case-insensitive substring match of any word; empty or missing =
    all videos). A feed that fails (HTTP error, timeout, malformed XML) is logged and
    skipped. One bad channel never stops the others.
@@ -177,7 +177,7 @@ mark it seen, save. NotebookLM is never called again for a pending video.
 Telegram accepted it, set `auth_alert_sent` and save. Videos stay unseen and are
 processed after the session is renewed, if still inside the age window.
 
-- Shorts are never processed (never summarised or sent; bootstrap may still mark them seen, which is
+- Shorts are skipped by default (never summarised or sent; `skip_shorts: false` processes them; bootstrap may still mark them seen, which is
   harmless). Live streams and
   premieres get no special handling.
 - `active_hours` are inclusive on both ends, by local hour in `timezone`. Example:

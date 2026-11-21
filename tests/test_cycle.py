@@ -519,3 +519,15 @@ async def test_shorts_are_never_summarised_or_marked_seen(tmp_path: Path) -> Non
 
     assert summarizer.summarize_calls == []
     assert not load(tmp_path).is_seen("s")
+
+
+async def test_shorts_are_summarised_when_skip_shorts_is_off(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    short = make_video("s", url="https://www.youtube.com/shorts/s")
+    summarizer = FakeSummarizer()
+    config = make_config(skip_shorts=False)
+    deps = replace(make_deps(tmp_path, feed(short), summarizer), config=config)
+
+    await run(deps)
+
+    assert summarizer.summarize_calls == [short.url]

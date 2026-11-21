@@ -35,6 +35,7 @@ def make_config(**overrides: Any) -> AppConfig:
         "max_video_age_hours": 48,
         "prompt": "Resume el vídeo",
         "texts": ENGLISH,
+        "skip_shorts": True,
     }
     values.update(overrides)
     return AppConfig(**values)

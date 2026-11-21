@@ -231,3 +231,19 @@ def test_language_is_stripped_and_case_insensitive(tmp_path: Path, value: str) -
 def test_language_non_string_is_rejected(tmp_path: Path, value: Any) -> None:
     with pytest.raises(ConfigError, match="language"):
         load_app_config(write_yaml(tmp_path, {**VALID, "language": value}))
+
+
+def test_skip_shorts_defaults_to_true(tmp_path: Path) -> None:
+    assert load_app_config(write_yaml(tmp_path, VALID)).skip_shorts is True
+
+
+def test_skip_shorts_false_is_accepted(tmp_path: Path) -> None:
+    config = load_app_config(write_yaml(tmp_path, {**VALID, "skip_shorts": False}))
+
+    assert config.skip_shorts is False
+
+
+@pytest.mark.parametrize("value", ["true", 1, None])
+def test_skip_shorts_must_be_boolean(tmp_path: Path, value: object) -> None:
+    with pytest.raises(ConfigError, match="skip_shorts"):
+        load_app_config(write_yaml(tmp_path, {**VALID, "skip_shorts": value}))

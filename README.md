@@ -29,7 +29,7 @@ Every `poll_interval_minutes` the service runs one iteration:
   channel's `title_filter` are ignored.
 - **Summarise**: each video gets its own NotebookLM conversation; only document sources (pasted text, Markdown,
   PDF, Google Docs, ...) are kept as permanent reference and used in every answer; every other source (videos,
-  web pages) is removed before each video. YouTube Shorts are skipped. A video NotebookLM cannot process yet is deferred to the next iteration.
+  web pages) is removed before each video. YouTube Shorts are skipped unless `skip_shorts` is `false`. A video NotebookLM cannot process yet is deferred to the next iteration.
 - **Send**: the message is stored in `seen.json` first, so a failed send is retried (3 send attempts in total)
   without calling NotebookLM again. At most 3 send attempts in total. A Telegram rejection stops that iteration's deliveries.
 - **Quota**: when NotebookLM's chat quota is exhausted the iteration stops with a warning, no failure is
@@ -93,6 +93,7 @@ Config files live in `<YST_HOME>/config/`. Changing `config.yml` or `channels.ym
 | `active_hours` | `{start, end, timezone}` | Hours 0-23 (inclusive, `start <= end`) and an IANA zone, e.g. `{start: 7, end: 23, timezone: Europe/Madrid}` |
 | `max_video_age_hours` | int > 0 | Ignore older videos, e.g. `48` |
 | `language` | `en` \| `es` | Default `en`. Language of the fixed texts (link text, untitled title, auth alert). The summary language comes from your prompt |
+| `skip_shorts` | bool | Default `true`. Set `false` to summarise YouTube Shorts too |
 | `prompt` | string | Your prompt. No prompt ships with the repo; it must make NotebookLM answer with ONLY `{"summary": str, "key_points": [str]}` |
 
 ### `channels.yml`
