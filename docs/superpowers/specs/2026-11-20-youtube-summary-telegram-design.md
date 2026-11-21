@@ -140,9 +140,9 @@ on SIGTERM). One iteration:
    all videos). A feed that fails (HTTP error, timeout, malformed XML) is logged and
    skipped. One bad channel never stops the others.
 6. **Process candidates oldest first.** Before each video, stop if SIGTERM arrived.
-   - NotebookLM (900 s timeout): delete the previous video sources (kind `youtube` or
-     `google_drive_video`; URL contains `youtube.com`/`youtu.be` if the kind is unknown) of
-     the dedicated notebook, keeping every other source as permanent reference, add the
+   - NotebookLM (900 s timeout): delete every source of the dedicated notebook that is not a
+     document (kept kinds: pasted text, Markdown, PDF, Google Docs/Slides/Sheets, DOCX,
+     PowerPoint, CSV, EPUB, Excel; unknown kinds are deleted too), add the
      video URL (wait until processed), ask the configured prompt over all sources. One chat query per
      video.
    - Video not processable yet (`SourceError`, e.g. a premiere or a live stream still
@@ -177,7 +177,8 @@ mark it seen, save. NotebookLM is never called again for a pending video.
 Telegram accepted it, set `auth_alert_sent` and save. Videos stay unseen and are
 processed after the session is renewed, if still inside the age window.
 
-- Shorts are never processed (not summarised, sent or marked seen). Live streams and
+- Shorts are never processed (never summarised or sent; bootstrap may still mark them seen, which is
+  harmless). Live streams and
   premieres get no special handling.
 - `active_hours` are inclusive on both ends, by local hour in `timezone`. Example:
   start 7, end 23 → summarises and sends from 07:00 to 23:59.
@@ -338,9 +339,9 @@ from notebooklm.exceptions import AuthError, HeadlessReauthError, NotebookLMErro
 
 async with NotebookLMClient.from_storage(str(storage_state_path)) as client:
     sources = await client.sources.list(notebook_id)
-    video_ids = [s.id for s in sources if s.kind in (SourceType.YOUTUBE, SourceType.GOOGLE_DRIVE_VIDEO)]
-    if video_ids:   # other sources are permanent reference documents; unknown kind: fall back to a youtube.com/youtu.be URL
-        await client.sources.delete_many(notebook_id, video_ids)
+    stale_ids = [s.id for s in sources if s.kind not in DOCUMENT_KINDS]   # documents are permanent reference sources
+    if stale_ids:
+        await client.sources.delete_many(notebook_id, stale_ids)
     await client.sources.add_url(notebook_id, video_url, wait=True, wait_timeout=600)   # raises SourceError if not processable
     conversation_id = await client.chat.get_conversation_id(notebook_id)
     if conversation_id is not None:

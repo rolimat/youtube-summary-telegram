@@ -7,7 +7,6 @@ from typing import Any
 
 import httpx
 import pytest
-from notebooklm import SourceType
 from notebooklm._auth.cookie_policy import RequiredCookieValidationError
 from notebooklm._auth.cookie_semantics import CookieRowError
 from notebooklm._auth.cookie_types import StorageStateValidationError
@@ -19,6 +18,7 @@ from notebooklm.exceptions import (
     SourceError,
     SourceTimeoutError,
 )
+from notebooklm.types import SourceType
 
 from youtube_summary.summarizer import (
     NotebookAuthError,
@@ -32,8 +32,7 @@ from youtube_summary.summarizer import (
 @dataclass
 class _Source:
     id: str
-    kind: SourceType = SourceType.YOUTUBE
-    url: str | None = None
+    kind: SourceType
 
 
 @dataclass
@@ -44,7 +43,7 @@ class _Answer:
 class _FakeClient:
     def __init__(
         self,
-        sources: Sequence[str | _Source],
+        sources: Sequence[_Source],
         fail: Exception | None = None,
         conversation: str | None = None,
         ask_fail: Exception | None = None,
@@ -62,7 +61,7 @@ class _FakeClient:
         self.calls.append(("list", *args))
         if self._fail:
             raise self._fail
-        return [_Source(i) if isinstance(i, str) else i for i in self._sources]
+        return list(self._sources)
 
     async def delete_many(self, notebook_id: str, source_ids: Sequence[str]) -> None:
         self.calls.append(("delete_many", notebook_id, *source_ids))
@@ -101,7 +100,7 @@ def _summarizer(
 
 
 async def test_summarize_replaces_sources_and_returns_answer() -> None:
-    client = _FakeClient(["a", "b"])
+    client = _FakeClient([_Source("a", SourceType.YOUTUBE), _Source("b", SourceType.UNKNOWN)])
     answer = await _summarizer(client).summarize("https://y/v", "prompt")
     assert answer == "the answer"
     assert client.calls == [
@@ -218,21 +217,21 @@ async def test_quota_pause_defaults_to_an_hour_and_spares_ping() -> None:
     assert len(client.calls) == calls
 
 
-async def test_summarize_deletes_only_video_sources() -> None:
-    sources = [
-        _Source("yt"),
-        _Source("drive", SourceType.GOOGLE_DRIVE_VIDEO),
-        _Source("pdf", SourceType.PDF),
-        _Source("txt", SourceType.PASTED_TEXT),
-        _Source("old", SourceType.UNKNOWN, "https://youtu.be/x"),
-        _Source("doc", SourceType.UNKNOWN, "https://example.org/a"),
-    ]
-    client = _FakeClient(sources)
+async def test_summarize_keeps_document_sources_and_deletes_the_rest() -> None:
+    client = _FakeClient(
+        [
+            _Source("pdf", SourceType.PDF),
+            _Source("yt", SourceType.YOUTUBE),
+            _Source("txt", SourceType.PASTED_TEXT),
+            _Source("unk", SourceType.UNKNOWN),
+            _Source("web", SourceType.WEB_PAGE),
+        ]
+    )
     await _summarizer(client).summarize("u", "p")
-    assert ("delete_many", "nb", "yt", "drive", "old") in client.calls
+    assert ("delete_many", "nb", "yt", "unk", "web") in client.calls
 
 
-async def test_summarize_skips_delete_without_video_sources() -> None:
-    client = _FakeClient([_Source("pdf", SourceType.PDF)])
+async def test_summarize_skips_delete_when_only_documents_exist() -> None:
+    client = _FakeClient([_Source("pdf", SourceType.PDF), _Source("md", SourceType.MARKDOWN)])
     await _summarizer(client).summarize("u", "p")
     assert "delete_many" not in [call[0] for call in client.calls]
