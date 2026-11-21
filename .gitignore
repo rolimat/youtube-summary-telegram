@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.coverage
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+dist/
+.env*
+!.env.sample
+config.yml
+channels.yml
+local/
+state/
+secrets/
+seen.json*
+storage_state.json
+scripts/server.env

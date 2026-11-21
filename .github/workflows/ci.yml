@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          enable-cache: true
+      - run: uv python install
+      - run: uv sync --locked
+      - run: uv run pre-commit run --all-files
+      - run: uv run pytest -q --cov=youtube_summary --cov-fail-under=90 --cov-report=term-missing:skip-covered
