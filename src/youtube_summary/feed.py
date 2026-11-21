@@ -1,3 +1,5 @@
+import asyncio
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from xml.etree import ElementTree
@@ -7,7 +9,7 @@ import httpx
 from youtube_summary.config import Channel
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
-FEED_URL_TEMPLATE = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+FEED_URL = "https://www.youtube.com/feeds/videos.xml"
 FETCH_TIMEOUT_SECONDS = 15.0
 YT_NS = "http://www.youtube.com/xml/schemas/2015"
 
@@ -42,29 +44,44 @@ def _parse_entry(entry: ElementTree.Element, channel_name: str) -> Video | None:
         return None
     if published.tzinfo is None:
         return None
+    try:
+        published_utc = published.astimezone(UTC)
+    except OverflowError:
+        return None
     title = _text(entry, f"{{{ATOM_NS}}}title") or ""
-    return Video(video_id, url, title, published.astimezone(UTC), channel_name)
+    return Video(video_id, url, title, published_utc, channel_name)
 
 
-def parse_feed(xml_text: str, channel_name: str) -> list[Video]:
+def parse_feed(xml_text: str | bytes, channel_name: str) -> list[Video]:
     try:
         root = ElementTree.fromstring(xml_text)
     except ElementTree.ParseError as error:
         raise FeedError(f"malformed feed XML for {channel_name}: {error}") from error
+    if root.tag != f"{{{ATOM_NS}}}feed":
+        raise FeedError(f"not an Atom feed for {channel_name}")
     entries = (_parse_entry(e, channel_name) for e in root.findall(f"{{{ATOM_NS}}}entry"))
     return [video for video in entries if video is not None]
 
 
 async def fetch_channel_videos(http: httpx.AsyncClient, channel: Channel) -> list[Video]:
-    url = FEED_URL_TEMPLATE.format(channel_id=channel.channel_id)
     try:
-        response = await http.get(url, timeout=FETCH_TIMEOUT_SECONDS)
+        async with asyncio.timeout(FETCH_TIMEOUT_SECONDS):
+            response = await http.get(
+                FEED_URL,
+                params={"channel_id": channel.channel_id},
+                timeout=FETCH_TIMEOUT_SECONDS,
+                follow_redirects=True,
+            )
         response.raise_for_status()
-    except httpx.HTTPError as error:
+    except (httpx.HTTPError, httpx.InvalidURL, TimeoutError) as error:
         raise FeedError(f"feed fetch failed for {channel.name}: {error!r}") from error
-    return parse_feed(response.text, channel.name)
+    return parse_feed(response.content, channel.name)
+
+
+def _normalise(text: str) -> str:
+    return unicodedata.normalize("NFC", text).casefold()
 
 
 def matches_title_filter(title: str, words: tuple[str, ...]) -> bool:
-    folded = title.casefold()
-    return not words or any(word.casefold() in folded for word in words)
+    folded = _normalise(title)
+    return not words or any(_normalise(word) in folded for word in words)
