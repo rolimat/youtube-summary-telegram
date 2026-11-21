@@ -53,6 +53,25 @@ def test_parse_answer_keeps_valid_escapes() -> None:
     assert parse_answer(answer) == Summary("a\\$b\nc", ())
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (r"\*a\_b\-c", "*a_b-c"),
+        (r"C:\Program", r"C:\Program"),
+        (r"\usuarios", r"\usuarios"),
+        (r"\u00e9", "é"),
+        (r"\\\$", r"\$"),
+        ("x\ny", "x\ny"),
+    ],
+)
+def test_parse_answer_repairs_sloppy_escapes(raw: str, expected: str) -> None:
+    assert parse_answer('{"summary": "' + raw + '"}') == Summary(expected, ())
+
+
+def test_parse_answer_accepts_literal_newline_in_string() -> None:
+    assert parse_answer('{"summary": "uno\ndos"}') == Summary("uno\ndos", ())
+
+
 def test_format_message_escapes_html_specials() -> None:
     video = make_video("x", title='S&P 500 <live> "2025"', url='https://youtu.be/x?a=1&b="2"')
     (message,) = format_message(video, Summary("a < b & c", ("p > q",)), ENGLISH)
