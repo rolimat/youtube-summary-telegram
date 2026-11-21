@@ -3,8 +3,6 @@ import logging
 import httpx
 
 logger = logging.getLogger(__name__)
-# httpx logs every request URL at INFO, and the Telegram URL embeds the bot token.
-logging.getLogger("httpx").setLevel(logging.WARNING)
 _TIMEOUT_SECONDS = 10
 _BODY_LOG_CHARS = 300
 
