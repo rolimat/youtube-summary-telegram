@@ -228,17 +228,7 @@ async def test_summarize_auth_failure_stops_iteration(tmp_path: Path) -> None:
     assert sender.texts == [format_auth_alert(ENGLISH)]
     state = load(tmp_path)
     assert not state.is_seen("a") and not state.is_seen("b") and state.auth_alert_sent
-
-
-async def test_summarize_auth_failures_give_up_after_three(tmp_path: Path) -> None:
-    seed_state(tmp_path)
-    summarizer = FakeSummarizer(default=NotebookAuthError("expired"))
-    deps = make_deps(tmp_path, feed(make_video("a")), summarizer, FakeSender())
-
-    results = [await run(deps) for _ in range(3)]
-
-    assert [r.given_up for r in results] == [0, 0, 1]
-    assert load(tmp_path).is_seen("a")
+    assert state.record_summarize_failure("a", NOW) == 1
 
 
 async def test_quota_exhausted_stops_iteration_without_failure(
@@ -254,7 +244,7 @@ async def test_quota_exhausted_stops_iteration_without_failure(
 
     assert result.quota_exhausted and result.failed == 0 and not result.auth_failed
     assert len(summarizer.summarize_calls) == 1
-    assert "quota exhausted" in caplog.text
+    assert "quota exhausted (limit)" in caplog.text and "Título" in caplog.text
     state = load(tmp_path)
     assert not state.is_seen("a") and not state.is_seen("b")
     assert state.record_summarize_failure("a", NOW) == 1

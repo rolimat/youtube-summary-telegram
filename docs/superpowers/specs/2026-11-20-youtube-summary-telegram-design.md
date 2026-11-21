@@ -146,11 +146,14 @@ on SIGTERM). One iteration:
    - Video not processable yet (`SourceError`, e.g. a premiere or a live stream still
      running): leave it unseen; retried next iteration until it ages out. This costs
      no chat query.
-   - Auth failure: the auth-alert path, end the iteration. The video also counts toward
-     the 3-failure cap below, so one video is not re-asked forever. Videos stay unseen
-     until then.
-   - Chat quota exhausted (`RateLimitError`): log a warning, record no failure, end the
-     iteration. Videos stay unseen and are retried until they age out.
+   - Auth failure: the auth-alert path, end the iteration. Auth failures never count
+     toward the failure cap and never drop a video; videos stay unseen and are processed
+     after the session is renewed.
+   - Chat quota exhausted (`RateLimitError` from the chat query only; the same error
+     from source or notebook calls is an ordinary failure): log a warning, record no
+     failure, end the iteration. The adapter pauses NotebookLM calls for `retry_after`
+     (else 1 h): while paused, `summarize` fails at once without calling NotebookLM.
+     Videos stay unseen and are retried until they age out.
    - Other NotebookLM error or timeout: increment the video's failure count. At 3
      failures, log an error and mark it seen (given up). Otherwise retry next iteration.
    - Success: clear its failure count, build the message, split it if > 4096 chars,

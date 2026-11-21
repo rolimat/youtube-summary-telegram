@@ -12,8 +12,9 @@ source "$env_file"
 : "${SERVER_YST_HOME:?set SERVER_YST_HOME in server.env}"
 
 case "$SERVER_YST_HOME" in
+  *[[:space:]]*) echo "SERVER_YST_HOME must not contain whitespace" >&2; exit 1 ;;
   /*) ;;
-  *) echo "SERVER_YST_HOME must be an absolute path (start with /); paths with spaces are not supported" >&2; exit 1 ;;
+  *) echo "SERVER_YST_HOME must be an absolute path (start with /)" >&2; exit 1 ;;
 esac
 
 export NOTEBOOKLM_PROFILE="${NOTEBOOKLM_PROFILE:-youtube-summary}"

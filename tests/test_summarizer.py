@@ -40,8 +40,13 @@ class _Answer:
 
 class _FakeClient:
     def __init__(
-        self, sources: list[str], fail: Exception | None = None, conversation: str | None = None
+        self,
+        sources: list[str],
+        fail: Exception | None = None,
+        conversation: str | None = None,
+        ask_fail: Exception | None = None,
     ) -> None:
+        self._ask_fail = ask_fail
         self._conversation = conversation
         self.calls: list[tuple[str, ...]] = []
         self._sources = sources
@@ -74,18 +79,22 @@ class _FakeClient:
 
     async def ask(self, notebook_id: str, prompt: str) -> _Answer:
         self.calls.append(("ask", notebook_id, prompt))
+        if self._ask_fail:
+            raise self._ask_fail
         return _Answer("the answer")
 
 
 def _summarizer(
-    client: _FakeClient, factory: Callable[[str], AbstractAsyncContextManager[Any]] | None = None
+    client: _FakeClient,
+    factory: Callable[[str], AbstractAsyncContextManager[Any]] | None = None,
+    clock: Callable[[], float] = lambda: 0.0,
 ) -> NotebookLMSummarizer:
     @asynccontextmanager
     async def default(path: str) -> Any:
         assert path == "/s.json"
         yield client
 
-    return NotebookLMSummarizer(Path("/s.json"), "nb", factory or default)
+    return NotebookLMSummarizer(Path("/s.json"), "nb", factory or default, clock)
 
 
 async def test_summarize_replaces_sources_and_returns_answer() -> None:
@@ -120,11 +129,12 @@ _ERRORS: list[tuple[Exception, type[Exception]]] = [
     (SourceTimeoutError("s", 1.0), VideoNotReadyError),
     (AuthError("x"), NotebookAuthError),
     (HeadlessReauthError("x"), NotebookAuthError),
-    (StorageStateValidationError("x"), NotebookAuthError),
-    (RequiredCookieValidationError("x"), NotebookAuthError),
-    (CookieRowError("f", "r"), NotebookAuthError),
-    (json.JSONDecodeError("x", "", 0), NotebookAuthError),
-    (RateLimitError("x"), NotebookQuotaError),
+    (StorageStateValidationError("x"), SummarizerError),
+    (RequiredCookieValidationError("x"), SummarizerError),
+    (CookieRowError("f", "r"), SummarizerError),
+    (json.JSONDecodeError("x", "", 0), SummarizerError),
+    (FileNotFoundError("x"), SummarizerError),
+    (RateLimitError("x"), SummarizerError),
     (NotebookLMError("x"), SummarizerError),
     (httpx.ConnectError("x"), SummarizerError),
     (TimeoutError(), SummarizerError),
@@ -144,11 +154,62 @@ async def test_ping_maps_library_errors(error: Exception, expected: type[Excepti
         await _summarizer(_FakeClient([], error)).ping()
 
 
-async def test_missing_storage_file_maps_to_auth_error(tmp_path: Path) -> None:
+_ENTER_ERRORS: list[Exception] = [
+    FileNotFoundError("x"),
+    StorageStateValidationError("x"),
+    RequiredCookieValidationError("x"),
+    CookieRowError("f", "r"),
+    json.JSONDecodeError("x", "", 0),
+]
+
+
+@pytest.mark.parametrize("error", _ENTER_ERRORS)
+async def test_errors_entering_the_client_map_to_auth_error(error: Exception) -> None:
     @asynccontextmanager
-    async def missing(path: str) -> Any:
-        raise FileNotFoundError(path)
+    async def failing(path: str) -> Any:
+        raise error
         yield
 
     with pytest.raises(NotebookAuthError):
-        await _summarizer(_FakeClient([]), missing).ping()
+        await _summarizer(_FakeClient([]), failing).ping()
+    with pytest.raises(NotebookAuthError):
+        await _summarizer(_FakeClient([]), failing).summarize("u", "p")
+
+
+async def test_chat_rate_limit_maps_to_quota_error() -> None:
+    client = _FakeClient([], ask_fail=RateLimitError("x"))
+    with pytest.raises(NotebookQuotaError):
+        await _summarizer(client).summarize("u", "p")
+
+
+async def test_quota_pause_skips_notebooklm_until_deadline() -> None:
+    now = [0.0]
+    client = _FakeClient([], ask_fail=RateLimitError("x", retry_after=60))
+    summarizer = _summarizer(client, clock=lambda: now[0])
+    with pytest.raises(NotebookQuotaError):
+        await summarizer.summarize("u", "p")
+    calls = len(client.calls)
+
+    now[0] = 59.0
+    with pytest.raises(NotebookQuotaError):
+        await summarizer.summarize("u", "p")
+    assert len(client.calls) == calls
+
+    now[0] = 61.0
+    with pytest.raises(NotebookQuotaError):
+        await summarizer.summarize("u", "p")
+    assert len(client.calls) > calls
+
+
+async def test_quota_pause_defaults_to_an_hour_and_spares_ping() -> None:
+    now = [0.0]
+    client = _FakeClient([], ask_fail=RateLimitError("x", retry_after=0))
+    summarizer = _summarizer(client, clock=lambda: now[0])
+    with pytest.raises(NotebookQuotaError):
+        await summarizer.summarize("u", "p")
+    await summarizer.ping()
+    now[0] = 3599.0
+    calls = len(client.calls)
+    with pytest.raises(NotebookQuotaError):
+        await summarizer.summarize("u", "p")
+    assert len(client.calls) == calls

@@ -155,13 +155,12 @@ async def _process_video(
         result.deferred += 1
         logger.info("Deferred, not processable yet: %s", _label(video))
         return True
-    except NotebookQuotaError:
+    except NotebookQuotaError as error:
         result.quota_exhausted = True
-        logger.warning("NotebookLM quota exhausted; retrying next iteration")
+        logger.warning("NotebookLM quota exhausted (%s); paused, %s waits", error, _label(video))
         return False
-    except NotebookAuthError as error:
+    except NotebookAuthError:
         _auth_failed(result)
-        _summarize_failed(state, video, now, result, error)
         return False
     except Exception as error:
         _summarize_failed(state, video, now, result, error)
@@ -189,7 +188,7 @@ async def _store_and_send(
 def _summarize_failed(
     state: SeenState, video: Video, now: datetime, result: CycleResult, error: Exception
 ) -> None:
-    if not isinstance(error, (SummarizerError, NotebookAuthError, EmptyAnswerError)):
+    if not isinstance(error, (SummarizerError, EmptyAnswerError)):
         logger.exception("Unexpected error summarising %s", _label(video))
     count = state.record_summarize_failure(video.video_id, now)
     if count >= MAX_SUMMARIZE_FAILURES:

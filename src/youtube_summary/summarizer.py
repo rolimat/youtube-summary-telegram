@@ -1,7 +1,8 @@
 import asyncio
 import json
+import time
 from collections.abc import Callable, Iterator
-from contextlib import AbstractAsyncContextManager, contextmanager
+from contextlib import AbstractAsyncContextManager, AsyncExitStack, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -21,15 +22,16 @@ from notebooklm.exceptions import (
 _SUMMARIZE_TIMEOUT_SECONDS = 900
 _PING_TIMEOUT_SECONDS = 60
 _SOURCE_WAIT_SECONDS = 600
-_AUTH_ERRORS = (
-    AuthError,
-    HeadlessReauthError,
+_DEFAULT_QUOTA_PAUSE_SECONDS = 3600
+_AUTH_ERRORS = (AuthError, HeadlessReauthError)
+_ENTER_AUTH_ERRORS = (
     FileNotFoundError,
     StorageStateValidationError,
     RequiredCookieValidationError,
     CookieRowError,
     json.JSONDecodeError,
 )
+_LIBRARY_ERRORS = (NotebookLMError, TimeoutError, httpx.HTTPError, *_ENTER_AUTH_ERRORS)
 
 
 class VideoNotReadyError(Exception): ...
@@ -50,11 +52,9 @@ def _mapped_errors() -> Iterator[None]:
         yield
     except SourceError as error:
         raise VideoNotReadyError(str(error)) from error
-    except RateLimitError as error:
-        raise NotebookQuotaError(str(error)) from error
     except _AUTH_ERRORS as error:
         raise NotebookAuthError(str(error)) from error
-    except (NotebookLMError, TimeoutError, httpx.HTTPError) as error:
+    except _LIBRARY_ERRORS as error:
         raise SummarizerError(f"{type(error).__name__}: {error}") from error
 
 
@@ -64,22 +64,44 @@ class NotebookLMSummarizer:
         storage_state_path: Path,
         notebook_id: str,
         client_factory: Callable[[str], AbstractAsyncContextManager[Any]] | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        self._clock = clock
+        self._paused_until = 0.0
         self._path = str(storage_state_path)
         self._notebook_id = notebook_id
         self._factory = client_factory or NotebookLMClient.from_storage
 
     async def summarize(self, video_url: str, prompt: str) -> str:
+        if self._clock() < self._paused_until:
+            raise NotebookQuotaError("NotebookLM chat quota pause in effect")
         with _mapped_errors():
-            async with asyncio.timeout(_SUMMARIZE_TIMEOUT_SECONDS), self._factory(self._path) as c:
-                await self._reset(c, video_url)
-                result = await c.chat.ask(self._notebook_id, prompt)
-                return str(result.answer)
+            async with asyncio.timeout(_SUMMARIZE_TIMEOUT_SECONDS), AsyncExitStack() as stack:
+                client = await self._enter(stack)
+                await self._reset(client, video_url)
+                return await self._ask(client, prompt)
 
     async def ping(self) -> None:
         with _mapped_errors():
-            async with asyncio.timeout(_PING_TIMEOUT_SECONDS), self._factory(self._path) as c:
-                await c.notebooks.list()
+            async with asyncio.timeout(_PING_TIMEOUT_SECONDS), AsyncExitStack() as stack:
+                await (await self._enter(stack)).notebooks.list()
+
+    async def _enter(self, stack: AsyncExitStack) -> Any:
+        try:
+            return await stack.enter_async_context(self._factory(self._path))
+        except _ENTER_AUTH_ERRORS as error:
+            raise NotebookAuthError(str(error)) from error
+
+    async def _ask(self, client: Any, prompt: str) -> str:
+        try:
+            result = await client.chat.ask(self._notebook_id, prompt)
+        except RateLimitError as error:
+            wait = error.retry_after
+            self._paused_until = self._clock() + (
+                wait if wait and wait > 0 else _DEFAULT_QUOTA_PAUSE_SECONDS
+            )
+            raise NotebookQuotaError(f"{type(error).__name__}: {error}") from error
+        return str(result.answer)
 
     async def _reset(self, client: Any, video_url: str) -> None:
         sources = await client.sources.list(self._notebook_id)
