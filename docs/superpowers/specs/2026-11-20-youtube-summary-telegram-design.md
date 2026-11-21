@@ -183,9 +183,11 @@ processed after the session is renewed, if still inside the age window.
 • <key point>
 • <key point>
 
-🔗 <a href="<url>">Watch video</a>   (Spanish: `Ver vídeo`; all fixed texts in `texts.py`)
+🔗 <a href="<url>">Watch video</a>
 ```
 
+- Fixed texts (`Untitled`, `Watch video`, the auth alert) live in `texts.py` in English and
+  Spanish (`Sin título`, `Ver vídeo`); `language` in `config.yml` picks one.
 - `parse_mode: "HTML"`. Dynamic text is escaped with `html.escape(text, quote=False)`,
   the URL inside `href` with `html.escape(url, quote=True)`. HTML only needs `<`, `>`,
   `&` (and `"` in attributes) escaped, so there is no hand-written escape table.

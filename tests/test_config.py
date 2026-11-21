@@ -11,6 +11,7 @@ from youtube_summary.config import (
     load_channels,
     load_settings,
 )
+from youtube_summary.texts import ENGLISH, SPANISH
 
 ROOT = Path(__file__).parent.parent
 
@@ -209,13 +210,24 @@ def test_sample_files_load() -> None:
 
 
 def test_language_defaults_to_english(tmp_path: Path) -> None:
-    assert load_app_config(write_yaml(tmp_path, VALID)).language == "en"
+    assert load_app_config(write_yaml(tmp_path, VALID)).texts is ENGLISH
 
 
 def test_language_spanish_is_accepted(tmp_path: Path) -> None:
-    assert load_app_config(write_yaml(tmp_path, {**VALID, "language": "es"})).language == "es"
+    assert load_app_config(write_yaml(tmp_path, {**VALID, "language": "es"})).texts is SPANISH
 
 
 def test_language_unknown_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ConfigError, match="language"):
         load_app_config(write_yaml(tmp_path, {**VALID, "language": "fr"}))
+
+
+@pytest.mark.parametrize("value", ["ES", " es "])
+def test_language_is_stripped_and_case_insensitive(tmp_path: Path, value: str) -> None:
+    assert load_app_config(write_yaml(tmp_path, {**VALID, "language": value})).texts is SPANISH
+
+
+@pytest.mark.parametrize("value", [["es"], {"a": 1}, 5, None])
+def test_language_non_string_is_rejected(tmp_path: Path, value: Any) -> None:
+    with pytest.raises(ConfigError, match="language"):
+        load_app_config(write_yaml(tmp_path, {**VALID, "language": value}))

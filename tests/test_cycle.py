@@ -26,7 +26,7 @@ from youtube_summary.summarizer import (
     SummarizerError,
     VideoNotReadyError,
 )
-from youtube_summary.texts import ENGLISH
+from youtube_summary.texts import ENGLISH, SPANISH
 
 
 def make_deps(
@@ -100,9 +100,20 @@ async def test_language_selects_the_message_texts(tmp_path: Path) -> None:
     sender = FakeSender()
     base = make_deps(tmp_path, feed(make_video("a")), sender=sender)
 
-    await run(replace(base, config=make_config(language="es")))
+    await run(replace(base, config=make_config(texts=SPANISH)))
 
     assert "Ver vídeo" in sender.texts[0]
+
+
+async def test_auth_alert_uses_configured_texts(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    sender = FakeSender()
+    summarizer = FakeSummarizer(ping_error=NotebookAuthError("expired"))
+    base = make_deps(tmp_path, feed(make_video("a")), summarizer, sender)
+
+    await run(replace(base, config=make_config(texts=SPANISH)))
+
+    assert sender.texts == [format_auth_alert(SPANISH)]
 
 
 async def test_keepalive_runs_every_iteration_even_outside_hours(tmp_path: Path) -> None:
