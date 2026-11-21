@@ -3,6 +3,7 @@ notebooklm:
 poll_interval_minutes: 15
 active_hours: {start: 7, end: 23, timezone: Europe/Madrid}
 max_video_age_hours: 48
+skip_shorts: true  # skip YouTube Shorts (set false to summarise them)
 language: en  # en | es — language of the texts this service adds (the summary language comes from your prompt)
 # The prompt must make NotebookLM answer with ONLY a JSON object:
 #   {"summary": str, "key_points": [str]}

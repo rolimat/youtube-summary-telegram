@@ -120,7 +120,7 @@ def test_main_module_is_importable() -> None:
   - `class ConfigError(Exception)`. Its message always names the file and the offending key.
   - `@dataclass(frozen=True) class Channel: name: str; channel_id: str; title_filter: tuple[str, ...]`
   - `@dataclass(frozen=True) class ActiveHours: start: int; end: int; timezone: ZoneInfo`
-  - `@dataclass(frozen=True) class AppConfig: notebook_id: str; poll_interval_minutes: int; active_hours: ActiveHours; max_video_age_hours: int; prompt: str; texts: Texts` (resolved from the optional YAML `language`, default `en`, must be a key of `texts.TEXTS`)
+  - `@dataclass(frozen=True) class AppConfig: notebook_id: str; poll_interval_minutes: int; active_hours: ActiveHours; max_video_age_hours: int; prompt: str; texts: Texts; skip_shorts: bool` (resolved from the optional YAML `language`, default `en`, must be a key of `texts.TEXTS`)
   - `@dataclass(frozen=True) class Settings: telegram_bot_token: str; telegram_chat_id: str; storage_state_path: Path; config_dir: Path; state_dir: Path`
   - `def load_app_config(path: Path) -> AppConfig`
   - `def load_channels(path: Path) -> tuple[Channel, ...]`
@@ -135,6 +135,7 @@ notebooklm:
 poll_interval_minutes: 15
 active_hours: {start: 7, end: 23, timezone: Europe/Madrid}
 max_video_age_hours: 48
+skip_shorts: true  # skip YouTube Shorts (set false to summarise them)
 language: en  # en | es
 prompt: |
   <Spanish prompt asking for ONLY a JSON object {"summary": "...", "key_points": ["..."]}>

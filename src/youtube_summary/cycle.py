@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from youtube_summary.config import AppConfig, Channel
-from youtube_summary.feed import FeedError, Video, is_short, matches_title_filter
+from youtube_summary.feed import FeedError, Video, is_short, matches_title_filter, watch_url
 from youtube_summary.message import (
     EmptyAnswerError,
     format_auth_alert,
@@ -122,12 +122,16 @@ def _label(video: Video) -> str:
 
 def _is_candidate(state: SeenState, channel: Channel, video: Video, oldest: datetime) -> bool:
     return (
-        not is_short(video)
-        and not state.is_seen(video.video_id)
+        not state.is_seen(video.video_id)
         and video.video_id not in state.pending
         and video.published_at > oldest
         and matches_title_filter(video.title, channel.title_filter)
     )
+
+
+def _mark_short_seen(state: SeenState, video: Video, now: datetime) -> None:
+    if not state.is_seen(video.video_id):
+        state.mark_seen(video.video_id, now)
 
 
 async def _collect_candidates(
@@ -137,13 +141,15 @@ async def _collect_candidates(
     videos: dict[str, Video] = {}
     for channel, fetched in zip(deps.channels, await _fetch_all(deps, result), strict=True):
         for video in fetched or []:
-            if _is_candidate(state, channel, video, oldest):
+            if deps.config.skip_shorts and is_short(video):
+                _mark_short_seen(state, video, now)
+            elif _is_candidate(state, channel, video, oldest):
                 videos.setdefault(video.video_id, video)
     return sorted(videos.values(), key=lambda video: video.published_at)
 
 
 async def _summarize(deps: CycleDeps, video: Video) -> list[str]:
-    answer = await deps.summarizer.summarize(video.url, deps.config.prompt)
+    answer = await deps.summarizer.summarize(watch_url(video), deps.config.prompt)
     return format_message(video, parse_answer(answer), deps.config.texts)
 
 

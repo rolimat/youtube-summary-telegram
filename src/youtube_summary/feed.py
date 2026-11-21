@@ -87,5 +87,9 @@ def matches_title_filter(title: str, words: tuple[str, ...]) -> bool:
     return not words or any(_normalise(word) in folded for word in words)
 
 
+def watch_url(video: Video) -> str:
+    return f"https://www.youtube.com/watch?v={video.video_id}"
+
+
 def is_short(video: Video) -> bool:
     return "/shorts/" in video.url
