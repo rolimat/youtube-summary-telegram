@@ -11,6 +11,7 @@ _SENTENCE_GAP = re.compile(r"(?<=[.!?])\s+")
 _GAP = re.compile(r"\s+")
 _PARTIAL_ENTITY = re.compile(r"&#?\w*$")
 _CITATION = re.compile(r"\s*\[\d{1,2}(?:\s*[,\-\u2013]\s*\d{1,2})*\]")
+_BAD_ESCAPE = re.compile(r'\\(\\|["/bfnrtu])|\\')
 
 
 class EmptyAnswerError(ValueError): ...
@@ -22,13 +23,17 @@ class Summary:
     key_points: tuple[str, ...]
 
 
+def _drop_invalid_escapes(text: str) -> str:
+    return _BAD_ESCAPE.sub(lambda m: m.group(0) if m.group(1) else "", text)
+
+
 def parse_answer(answer: str) -> Summary:
     fenced = _FENCE.search(answer)
     cleaned = _CITATION.sub("", fenced.group(1) if fenced else answer).strip()
     if not cleaned:
         raise EmptyAnswerError("empty answer")
     try:
-        data = json.loads(cleaned)
+        data = json.loads(_drop_invalid_escapes(cleaned))
     except json.JSONDecodeError:
         return Summary(cleaned, ())
     text = data.get("summary") if isinstance(data, dict) else None

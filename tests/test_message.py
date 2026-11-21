@@ -43,6 +43,16 @@ def test_parse_answer_json_without_summary_falls_back() -> None:
     assert parse_answer('["x"]') == Summary('["x"]', ())
 
 
+def test_parse_answer_drops_invalid_backslash_escapes() -> None:
+    answer = r'{"summary": "Cae a 152 \$ hoy.", "key_points": ["Máximo 239 \$"]}'
+    assert parse_answer(answer) == Summary("Cae a 152 $ hoy.", ("Máximo 239 $",))
+
+
+def test_parse_answer_keeps_valid_escapes() -> None:
+    answer = r'{"summary": "a\\$b\nc"}'
+    assert parse_answer(answer) == Summary("a\\$b\nc", ())
+
+
 def test_format_message_escapes_html_specials() -> None:
     video = make_video("x", title='S&P 500 <live> "2025"', url='https://youtu.be/x?a=1&b="2"')
     (message,) = format_message(video, Summary("a < b & c", ("p > q",)), ENGLISH)
