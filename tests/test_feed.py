@@ -15,6 +15,7 @@ from youtube_summary.feed import (
     is_short,
     matches_title_filter,
     parse_feed,
+    watch_url,
 )
 
 CHANNEL = Channel(name="Example", channel_id="UC1", title_filter=())
@@ -160,3 +161,9 @@ async def test_fetch_channel_videos_follows_redirects() -> None:
 )
 def test_is_short(url: str, expected: bool) -> None:
     assert is_short(make_video("abc", url=url)) is expected
+
+
+def test_watch_url_is_canonical() -> None:
+    short = make_video("abc", url="https://www.youtube.com/shorts/abc")
+
+    assert watch_url(short) == "https://www.youtube.com/watch?v=abc"

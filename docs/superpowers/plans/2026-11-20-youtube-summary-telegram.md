@@ -135,8 +135,8 @@ notebooklm:
 poll_interval_minutes: 15
 active_hours: {start: 7, end: 23, timezone: Europe/Madrid}
 max_video_age_hours: 48
-language: en  # en | es
 skip_shorts: true  # skip YouTube Shorts (set false to summarise them)
+language: en  # en | es
 prompt: |
   <Spanish prompt asking for ONLY a JSON object {"summary": "...", "key_points": ["..."]}>
 ```

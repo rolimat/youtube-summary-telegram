@@ -177,7 +177,7 @@ mark it seen, save. NotebookLM is never called again for a pending video.
 Telegram accepted it, set `auth_alert_sent` and save. Videos stay unseen and are
 processed after the session is renewed, if still inside the age window.
 
-- Shorts are skipped by default (never summarised or sent; `skip_shorts: false` processes them; bootstrap may still mark them seen, which is
+- Shorts are skipped by default (never summarised or sent, but marked seen so enabling them later does not flood a backlog; NotebookLM always receives the canonical `https://www.youtube.com/watch?v=<id>` URL while the Telegram link keeps the feed URL; `skip_shorts: false` processes them; bootstrap may still mark them seen, which is
   harmless). Live streams and
   premieres get no special handling.
 - `active_hours` are inclusive on both ends, by local hour in `timezone`. Example:
