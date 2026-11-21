@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from youtube_summary.summarizer import (
     SummarizerError,
     VideoNotReadyError,
 )
+from youtube_summary.texts import ENGLISH
 
 
 def make_deps(
@@ -93,6 +95,16 @@ async def test_new_video_is_summarised_sent_and_marked_seen(tmp_path: Path) -> N
     assert state.is_seen("a") and state.pending == {}
 
 
+async def test_language_selects_the_message_texts(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    sender = FakeSender()
+    base = make_deps(tmp_path, feed(make_video("a")), sender=sender)
+
+    await run(replace(base, config=make_config(language="es")))
+
+    assert "Ver vídeo" in sender.texts[0]
+
+
 async def test_keepalive_runs_every_iteration_even_outside_hours(tmp_path: Path) -> None:
     seed_state(tmp_path)
     summarizer, sender = FakeSummarizer(), FakeSender()
@@ -116,7 +128,7 @@ async def test_keepalive_auth_failure_alerts_once(tmp_path: Path) -> None:
     again = await run(deps)
 
     assert result.auth_failed and again.auth_failed
-    assert sender.texts == [format_auth_alert()]
+    assert sender.texts == [format_auth_alert(ENGLISH)]
     assert fetch.calls == [] and summarizer.summarize_calls == []
     assert load(tmp_path).auth_alert_sent
 
@@ -201,7 +213,7 @@ async def test_summarize_auth_failure_stops_iteration(tmp_path: Path) -> None:
     result = await run(deps)
 
     assert result.auth_failed and len(summarizer.summarize_calls) == 1
-    assert sender.texts == [format_auth_alert()]
+    assert sender.texts == [format_auth_alert(ENGLISH)]
     state = load(tmp_path)
     assert not state.is_seen("a") and not state.is_seen("b") and state.auth_alert_sent
 
@@ -389,7 +401,7 @@ async def test_summarize_auth_failure_alerts_once_across_iterations(tmp_path: Pa
     await run(deps)
     await run(deps)
 
-    assert sender.texts == [format_auth_alert()] and summarizer.ping_calls == 2
+    assert sender.texts == [format_auth_alert(ENGLISH)] and summarizer.ping_calls == 2
 
 
 async def test_auth_alert_waits_for_active_hours(tmp_path: Path) -> None:
@@ -402,7 +414,7 @@ async def test_auth_alert_waits_for_active_hours(tmp_path: Path) -> None:
     assert night.auth_failed and sender.texts == []
     await run(deps)
 
-    assert sender.texts == [format_auth_alert()]
+    assert sender.texts == [format_auth_alert(ENGLISH)]
 
 
 async def test_telegram_outage_stops_new_summaries(tmp_path: Path) -> None:

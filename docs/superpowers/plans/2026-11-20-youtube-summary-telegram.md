@@ -120,7 +120,7 @@ def test_main_module_is_importable() -> None:
   - `class ConfigError(Exception)`. Its message always names the file and the offending key.
   - `@dataclass(frozen=True) class Channel: name: str; channel_id: str; title_filter: tuple[str, ...]`
   - `@dataclass(frozen=True) class ActiveHours: start: int; end: int; timezone: ZoneInfo`
-  - `@dataclass(frozen=True) class AppConfig: notebook_id: str; poll_interval_minutes: int; active_hours: ActiveHours; max_video_age_hours: int; prompt: str`
+  - `@dataclass(frozen=True) class AppConfig: notebook_id: str; poll_interval_minutes: int; active_hours: ActiveHours; max_video_age_hours: int; prompt: str; language: str` (`language` optional in YAML, default `"en"`, must be a key of `texts.TEXTS`)
   - `@dataclass(frozen=True) class Settings: telegram_bot_token: str; telegram_chat_id: str; storage_state_path: Path; config_dir: Path; state_dir: Path`
   - `def load_app_config(path: Path) -> AppConfig`
   - `def load_channels(path: Path) -> tuple[Channel, ...]`
@@ -135,6 +135,7 @@ notebooklm:
 poll_interval_minutes: 15
 active_hours: {start: 7, end: 23, timezone: Europe/Madrid}
 max_video_age_hours: 48
+language: en  # en | es
 prompt: |
   <Spanish prompt asking for ONLY a JSON object {"summary": "...", "key_points": ["..."]}>
 ```
@@ -243,7 +244,7 @@ channels:
 - Produces:
   - `@dataclass(frozen=True) class Summary: text: str; key_points: tuple[str, ...]`
   - `def parse_answer(answer: str) -> Summary`: strip ```` ``` ```` / ```` ```json ```` fences and citation markers matching `\s*\[\d+(?:\s*[,-]\s*\d+)*\]`, then `json.loads`. If the result is a dict with a non-empty string `summary`, return it with the `key_points` that are non-empty strings. Otherwise return `Summary(text=<cleaned answer stripped>, key_points=())`.
-  - `def format_message(video: Video, summary: Summary) -> str`: the HTML layout from the spec. Header `🎬 <b>{channel}</b> — {title}`; an empty title shows `Sin título`. Text goes through `html.escape(..., quote=False)`. Key-point lines are `• {point}`, and the key-points block is omitted when empty. The final line is `🔗 <a href="{html.escape(url, quote=True)}">Ver vídeo</a>`. Blocks are joined by `"\n\n"`.
+  - `def format_message(video: Video, summary: Summary, texts: Texts) -> str`: the HTML layout from the spec. Header `🎬 <b>{channel}</b> — {title}`; an empty title shows `Sin título`. Text goes through `html.escape(..., quote=False)`. Key-point lines are `• {point}`, and the key-points block is omitted when empty. The final line is `🔗 <a href="{html.escape(url, quote=True)}">Ver vídeo</a>`. Blocks are joined by `"\n\n"`.
   - `def split_for_telegram(text: str, max_chars: int = 4096) -> list[str]`: spec Appendix A plus the cut rule from the spec "Message format": cut at the last whitespace before `max_chars`, else at `max_chars` moved back before an unterminated `&…;` entity.
   - `def format_auth_alert() -> str`: the HTML-escaped Spanish text `⚠️ La sesión de NotebookLM ha caducado. Renueva storage_state.json (ver README). Los vídeos pendientes se enviarán al renovarla.`
 

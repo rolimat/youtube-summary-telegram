@@ -80,7 +80,7 @@ weekly summaries. The owner only wants a readable summary per video in Telegram.
 | File | In git | Content |
 |---|---|---|
 | `.env` | no — `.env.sample` committed | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `YST_HOME`, optional `YST_UID`/`YST_GID`; `NOTEBOOKLM_STORAGE_STATE_PATH`, `CONFIG_DIR`, `STATE_DIR` only when running without Docker |
-| `config.yml` | no — `config.yml.sample` committed | `notebooklm.notebook_id`, `poll_interval_minutes`, `active_hours.{start,end,timezone}`, `max_video_age_hours`, `prompt` |
+| `config.yml` | no — `config.yml.sample` committed | `notebooklm.notebook_id`, `poll_interval_minutes`, `active_hours.{start,end,timezone}`, `max_video_age_hours`, `prompt`, optional `language` (`en` default, or `es`; texts live in `texts.py`) |
 | `channels.yml` | no — `channels.yml.sample` committed | list of `{name, channel_id, title_filter?: [str]}` |
 | `storage_state.json` | never | NotebookLM session cookies (Playwright storage state) |
 | `seen.json` | never (in `STATE_DIR`) | handled ids, unsent messages, failure counts, auth-alert flag |
@@ -183,7 +183,7 @@ processed after the session is renewed, if still inside the age window.
 • <key point>
 • <key point>
 
-🔗 <a href="<url>">Ver vídeo</a>
+🔗 <a href="<url>">Watch video</a>   (Spanish: `Ver vídeo`; all fixed texts in `texts.py`)
 ```
 
 - `parse_mode: "HTML"`. Dynamic text is escaped with `html.escape(text, quote=False)`,

@@ -206,3 +206,16 @@ def test_sample_files_load() -> None:
     assert config.poll_interval_minutes == 15
     assert config.max_video_age_hours == 48
     assert len(channels) == 2
+
+
+def test_language_defaults_to_english(tmp_path: Path) -> None:
+    assert load_app_config(write_yaml(tmp_path, VALID)).language == "en"
+
+
+def test_language_spanish_is_accepted(tmp_path: Path) -> None:
+    assert load_app_config(write_yaml(tmp_path, {**VALID, "language": "es"})).language == "es"
+
+
+def test_language_unknown_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="language"):
+        load_app_config(write_yaml(tmp_path, {**VALID, "language": "fr"}))

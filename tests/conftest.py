@@ -33,6 +33,7 @@ def make_config(**overrides: Any) -> AppConfig:
         "active_hours": ActiveHours(7, 23, ZoneInfo("Europe/Madrid")),
         "max_video_age_hours": 48,
         "prompt": "Resume el vídeo",
+        "language": "en",
     }
     values.update(overrides)
     return AppConfig(**values)
