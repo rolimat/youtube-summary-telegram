@@ -1,9 +1,12 @@
+import os
+import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from youtube_summary.state import PendingMessage, SeenState
+from youtube_summary import state as state_module
+from youtube_summary.state import PendingMessage, SeenState, UnsupportedStateVersionError
 
 NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 
@@ -69,16 +72,13 @@ def test_load_quarantines_corrupt_or_empty_file(tmp_path: Path, content: str) ->
     assert len(list(tmp_path.glob("seen.json.corrupt-*"))) == 1
 
 
-VALID = (
-    '"seen": {}, "pending": {}, "summarize_failures": {}, "auth_alert_sent": false'
-)
+VALID = '"seen": {}, "pending": {}, "summarize_failures": {}, "auth_alert_sent": false'
 
 
 @pytest.mark.parametrize(
     "content",
     [
         "[1, 2]",
-        '{"version": 2, ' + VALID + "}",
         '{"version": 1, "seen": {}, "pending": {}, "auth_alert_sent": false}',
         '{"version": 1, "seen": [], "pending": {}, "summarize_failures": {},'
         ' "auth_alert_sent": false}',
@@ -86,6 +86,11 @@ VALID = (
         ' "summarize_failures": {}, "auth_alert_sent": false}',
         '{"version": 1, "seen": {}, "pending": {"a": {"label": 1, "chunks": [],'
         ' "send_attempts": 0}}, "summarize_failures": {}, "auth_alert_sent": false}',
+        '{"version": true, ' + VALID + "}",
+        '{"version": 1.0, ' + VALID + "}",
+        "{" + VALID + "}",
+        '{"version": 1, "seen": {"a": "0001-01-01T00:00:00+01:00"}, "pending": {},'
+        ' "summarize_failures": {}, "auth_alert_sent": false}',
     ],
 )
 def test_load_quarantines_wrong_shape(tmp_path: Path, content: str) -> None:
@@ -93,6 +98,7 @@ def test_load_quarantines_wrong_shape(tmp_path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
     assert SeenState.load(path) is None
+    assert not path.exists()
     assert len(list(tmp_path.glob("seen.json.corrupt-*"))) == 1
 
 
@@ -105,3 +111,63 @@ def test_save_leaves_no_tmp_file_and_overwrites_stale_tmp(tmp_path: Path) -> Non
 
     assert sorted(p.name for p in path.parent.iterdir()) == ["seen.json"]
     assert SeenState.load(path) is not None
+
+
+def test_unknown_integer_version_fails_loudly_and_keeps_file(tmp_path: Path) -> None:
+    path = tmp_path / "seen.json"
+    path.write_text('{"version": 2, ' + VALID + "}", encoding="utf-8")
+
+    with pytest.raises(UnsupportedStateVersionError, match=r"seen\.json.*2"):
+        SeenState.load(path)
+    assert path.exists()
+    assert not list(tmp_path.glob("seen.json.corrupt-*"))
+
+
+def test_quarantine_never_overwrites_earlier_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(state_module, "_utcnow", lambda: NOW)
+    path = tmp_path / "seen.json"
+    for index in range(3):
+        path.write_text(f"{{bad {index}", encoding="utf-8")
+        assert SeenState.load(path) is None
+
+    names = sorted(p.name for p in tmp_path.iterdir())
+    base = "seen.json.corrupt-20261120T120000Z"
+    assert names == [base, f"{base}-1", f"{base}-2"]
+    assert (tmp_path / base).read_text(encoding="utf-8") == "{bad 0"
+
+
+def test_save_failure_keeps_original_and_removes_tmp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "seen.json"
+    state = SeenState.empty(path)
+    state.mark_seen("kept", NOW)
+    state.save()
+    original = path.read_text(encoding="utf-8")
+    state.mark_seen("new", NOW)
+
+    def boom(_fd: int) -> None:
+        raise OSError("disk")
+
+    monkeypatch.setattr(os, "fsync", boom)
+    with pytest.raises(OSError, match="disk"):
+        state.save()
+
+    assert path.read_text(encoding="utf-8") == original
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["seen.json"]
+
+
+def test_save_fsyncs_parent_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    synced: list[bool] = []
+    real_fsync = os.fsync
+
+    def spy(fd: int) -> None:
+        synced.append(stat.S_ISDIR(os.fstat(fd).st_mode))
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", spy)
+    SeenState.empty(tmp_path / "seen.json").save()
+
+    assert synced == [False, True]
