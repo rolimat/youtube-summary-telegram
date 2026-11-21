@@ -109,7 +109,7 @@ def _auth_failed(result: CycleResult) -> None:
 
 
 async def _handle_auth_failure(deps: CycleDeps, state: SeenState) -> None:
-    if not state.auth_alert_sent and await deps.sender.send(format_auth_alert()):
+    if not state.auth_alert_sent and await deps.sender.send(format_auth_alert(deps.config.texts)):
         state.auth_alert_sent = True
         state.save()
 
@@ -141,7 +141,7 @@ async def _collect_candidates(
 
 async def _summarize(deps: CycleDeps, video: Video) -> list[str]:
     answer = await deps.summarizer.summarize(video.url, deps.config.prompt)
-    return format_message(video, parse_answer(answer))
+    return format_message(video, parse_answer(answer), deps.config.texts)
 
 
 async def _process_video(

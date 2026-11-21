@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 from youtube_summary.config import ActiveHours, AppConfig, Channel
 from youtube_summary.feed import Video
+from youtube_summary.texts import ENGLISH
 
 NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 ANSWER = '{"summary": "Resumen corto.", "key_points": ["Punto"]}'
@@ -33,6 +34,7 @@ def make_config(**overrides: Any) -> AppConfig:
         "active_hours": ActiveHours(7, 23, ZoneInfo("Europe/Madrid")),
         "max_video_age_hours": 48,
         "prompt": "Resume el vídeo",
+        "texts": ENGLISH,
     }
     values.update(overrides)
     return AppConfig(**values)

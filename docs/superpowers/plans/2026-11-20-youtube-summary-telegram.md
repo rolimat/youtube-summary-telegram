@@ -120,7 +120,7 @@ def test_main_module_is_importable() -> None:
   - `class ConfigError(Exception)`. Its message always names the file and the offending key.
   - `@dataclass(frozen=True) class Channel: name: str; channel_id: str; title_filter: tuple[str, ...]`
   - `@dataclass(frozen=True) class ActiveHours: start: int; end: int; timezone: ZoneInfo`
-  - `@dataclass(frozen=True) class AppConfig: notebook_id: str; poll_interval_minutes: int; active_hours: ActiveHours; max_video_age_hours: int; prompt: str`
+  - `@dataclass(frozen=True) class AppConfig: notebook_id: str; poll_interval_minutes: int; active_hours: ActiveHours; max_video_age_hours: int; prompt: str; texts: Texts` (resolved from the optional YAML `language`, default `en`, must be a key of `texts.TEXTS`)
   - `@dataclass(frozen=True) class Settings: telegram_bot_token: str; telegram_chat_id: str; storage_state_path: Path; config_dir: Path; state_dir: Path`
   - `def load_app_config(path: Path) -> AppConfig`
   - `def load_channels(path: Path) -> tuple[Channel, ...]`
@@ -135,6 +135,7 @@ notebooklm:
 poll_interval_minutes: 15
 active_hours: {start: 7, end: 23, timezone: Europe/Madrid}
 max_video_age_hours: 48
+language: en  # en | es
 prompt: |
   <Spanish prompt asking for ONLY a JSON object {"summary": "...", "key_points": ["..."]}>
 ```
@@ -243,14 +244,14 @@ channels:
 - Produces:
   - `@dataclass(frozen=True) class Summary: text: str; key_points: tuple[str, ...]`
   - `def parse_answer(answer: str) -> Summary`: strip ```` ``` ```` / ```` ```json ```` fences and citation markers matching `\s*\[\d+(?:\s*[,-]\s*\d+)*\]`, then `json.loads`. If the result is a dict with a non-empty string `summary`, return it with the `key_points` that are non-empty strings. Otherwise return `Summary(text=<cleaned answer stripped>, key_points=())`.
-  - `def format_message(video: Video, summary: Summary) -> str`: the HTML layout from the spec. Header `🎬 <b>{channel}</b> — {title}`; an empty title shows `Sin título`. Text goes through `html.escape(..., quote=False)`. Key-point lines are `• {point}`, and the key-points block is omitted when empty. The final line is `🔗 <a href="{html.escape(url, quote=True)}">Ver vídeo</a>`. Blocks are joined by `"\n\n"`.
+  - `def format_message(video: Video, summary: Summary, texts: Texts, max_chars: int = 4096) -> list[str]`: the HTML layout from the spec. Header `🎬 <b>{channel}</b> — {title}`; an empty title shows `texts.untitled`. Text goes through `html.escape(..., quote=False)`. Key-point lines are `• {point}`, and the key-points block is omitted when empty. The final line is `🔗 <a href="{html.escape(url, quote=True)}">{texts.watch_video}</a>`. Blocks are joined by `"\n\n"`.
   - `def split_for_telegram(text: str, max_chars: int = 4096) -> list[str]`: spec Appendix A plus the cut rule from the spec "Message format": cut at the last whitespace before `max_chars`, else at `max_chars` moved back before an unterminated `&…;` entity.
-  - `def format_auth_alert() -> str`: the HTML-escaped Spanish text `⚠️ La sesión de NotebookLM ha caducado. Renueva storage_state.json (ver README). Los vídeos pendientes se enviarán al renovarla.`
+  - `def format_auth_alert(texts: Texts) -> str`: the HTML-escaped `texts.auth_alert`
 
 - [ ] **Step 1: Failing test** `test_parse_answer_reads_json`. Implement. Run.
 - [ ] **Step 2: Failing test** `test_parse_answer_strips_fences_and_citations`. Input: ```` ```json\n{"summary": "Sube [1].", "key_points": ["A [2, 3]"]}\n``` ````. Expected: `Summary("Sube.", ("A",))`. Implement.
 - [ ] **Step 3: Failing test** `test_parse_answer_falls_back_to_raw_text` (`"Texto libre [1]"` → `Summary("Texto libre", ())`). Implement.
-- [ ] **Step 4: Failing test** `test_format_message_escapes_html_specials` (Review Focus 3). Use title `S&P 500 <live> "2025"`, a summary with `a < b & c`, and URL `https://youtu.be/x?a=1&b="2"`. Assert the header contains `S&amp;P 500 &lt;live&gt; "2025"`, the summary contains `a &lt; b &amp; c`, and the link is `<a href="https://youtu.be/x?a=1&amp;b=&quot;2&quot;">Ver vídeo</a>`. Implement.
+- [ ] **Step 4: Failing test** `test_format_message_escapes_html_specials` (Review Focus 3). Use title `S&P 500 <live> "2025"`, a summary with `a < b & c`, and URL `https://youtu.be/x?a=1&b="2"`. Assert the header contains `S&amp;P 500 &lt;live&gt; "2025"`, the summary contains `a &lt; b &amp; c`, and the link is `<a href="https://youtu.be/x?a=1&amp;b=&quot;2&quot;">Watch video</a>` (English texts). Implement.
 - [ ] **Step 5: Failing test** `test_format_message_omits_empty_key_points` (no `•` in the output). Implement.
 - [ ] **Step 6: Failing tests** for the split (Review Focus 2):
   - `test_split_for_telegram_hard_cuts_oversized_sentence`: `"a" * 9000` → 3 chunks, all ≤ 4096, joined back equals the input.

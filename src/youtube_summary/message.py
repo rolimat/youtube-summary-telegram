@@ -4,12 +4,9 @@ import re
 from dataclasses import dataclass
 
 from youtube_summary.feed import Video
+from youtube_summary.texts import Texts
 
 _FENCE = re.compile(r"```[\w+-]*\s*(.*?)```", re.DOTALL)
-_AUTH_ALERT = (
-    "⚠️ La sesión de NotebookLM ha caducado. Renueva storage_state.json (ver README). "
-    "Los vídeos pendientes se enviarán al renovarla."
-)
 _SENTENCE_GAP = re.compile(r"(?<=[.!?])\s+")
 _GAP = re.compile(r"\s+")
 _PARTIAL_ENTITY = re.compile(r"&#?\w*$")
@@ -50,10 +47,12 @@ def _units(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
 
 
-def format_message(video: Video, summary: Summary, max_chars: int = 4096) -> list[str]:
-    title = video.title or "Sin título"
+def format_message(
+    video: Video, summary: Summary, texts: Texts, max_chars: int = 4096
+) -> list[str]:
+    title = video.title or texts.untitled
     header = f"🎬 <b>{_escape(video.channel_name)}</b> — {_escape(title)}"
-    footer = f'🔗 <a href="{html.escape(video.url, quote=True)}">Ver vídeo</a>'
+    footer = f'🔗 <a href="{html.escape(video.url, quote=True)}">{_escape(texts.watch_video)}</a>'
     parts = [_escape(summary.text)]
     if summary.key_points:
         parts.append("\n".join(f"• {_escape(point)}" for point in summary.key_points))
@@ -100,5 +99,5 @@ def split_for_telegram(text: str, max_chars: int = 4096) -> list[str]:
     return chunks
 
 
-def format_auth_alert() -> str:
-    return _escape(_AUTH_ALERT)
+def format_auth_alert(texts: Texts) -> str:
+    return _escape(texts.auth_alert)

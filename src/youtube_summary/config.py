@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import yaml
 
+from youtube_summary.texts import DEFAULT_LANGUAGE, TEXTS, Texts
+
 
 class ConfigError(Exception): ...
 
@@ -31,6 +33,7 @@ class AppConfig:
     active_hours: ActiveHours
     max_video_age_hours: int
     prompt: str
+    texts: Texts
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,14 @@ def _active_hours(path: Path, data: Mapping[str, Any]) -> ActiveHours:
         raise ConfigError(f"{path}: 'active_hours.timezone' unknown timezone '{name}'") from error
 
 
+def _texts(path: Path, data: Mapping[str, Any]) -> Texts:
+    value = data.get("language", DEFAULT_LANGUAGE)
+    texts = TEXTS.get(value.strip().lower()) if isinstance(value, str) else None
+    if texts is None:
+        raise ConfigError(f"{path}: 'language' must be one of {', '.join(sorted(TEXTS))}")
+    return texts
+
+
 def load_app_config(path: Path) -> AppConfig:
     data = _load_mapping(path)
     notebook = _section(path, data, "notebooklm")
@@ -101,6 +112,7 @@ def load_app_config(path: Path) -> AppConfig:
         active_hours=_active_hours(path, data),
         max_video_age_hours=_positive_int(path, data, "max_video_age_hours"),
         prompt=_text(path, data, "prompt"),
+        texts=_texts(path, data),
     )
 
 
