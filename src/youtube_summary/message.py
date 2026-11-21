@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from youtube_summary.feed import Video
 
-_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$")
+_FENCE = re.compile(r"```[\w+-]*\s*(.*?)```", re.DOTALL)
 _AUTH_ALERT = (
     "⚠️ La sesión de NotebookLM ha caducado. Renueva storage_state.json (ver README). "
     "Los vídeos pendientes se enviarán al renovarla."
@@ -13,7 +13,10 @@ _AUTH_ALERT = (
 _SENTENCE_GAP = re.compile(r"(?<=[.!?])\s+")
 _GAP = re.compile(r"\s+")
 _PARTIAL_ENTITY = re.compile(r"&#?\w*$")
-_CITATION = re.compile(r"\s*\[\d+(?:\s*[,-]\s*\d+)*\]")
+_CITATION = re.compile(r"\s*\[\d{1,2}(?:\s*[,\-\u2013]\s*\d{1,2})*\]")
+
+
+class EmptyAnswerError(ValueError): ...
 
 
 @dataclass(frozen=True)
@@ -23,7 +26,10 @@ class Summary:
 
 
 def parse_answer(answer: str) -> Summary:
-    cleaned = _CITATION.sub("", _FENCE.sub("", answer.strip())).strip()
+    fenced = _FENCE.search(answer)
+    cleaned = _CITATION.sub("", fenced.group(1) if fenced else answer).strip()
+    if not cleaned:
+        raise EmptyAnswerError("empty answer")
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
@@ -40,13 +46,25 @@ def _escape(text: str) -> str:
     return html.escape(text, quote=False)
 
 
-def format_message(video: Video, summary: Summary) -> str:
+def _units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def format_message(video: Video, summary: Summary, max_chars: int = 4096) -> list[str]:
     title = video.title or "Sin título"
-    blocks = [f"🎬 <b>{_escape(video.channel_name)}</b> — {_escape(title)}", _escape(summary.text)]
+    header = f"🎬 <b>{_escape(video.channel_name)}</b> — {_escape(title)}"
+    footer = f'🔗 <a href="{html.escape(video.url, quote=True)}">Ver vídeo</a>'
+    parts = [_escape(summary.text)]
     if summary.key_points:
-        blocks.append("\n".join(f"• {_escape(point)}" for point in summary.key_points))
-    blocks.append(f'🔗 <a href="{html.escape(video.url, quote=True)}">Ver vídeo</a>')
-    return "\n\n".join(blocks)
+        parts.append("\n".join(f"• {_escape(point)}" for point in summary.key_points))
+    body = "\n\n".join(parts)
+    whole = f"{header}\n\n{body}\n\n{footer}"
+    if _units(whole) <= max_chars:
+        return [whole]
+    pieces = split_for_telegram(body, max_chars - max(_units(header), _units(footer)) - 2)
+    pieces[0] = f"{header}\n\n{pieces[0]}"
+    pieces[-1] = f"{pieces[-1]}\n\n{footer}"
+    return pieces
 
 
 def _fit(text: str, max_units: int) -> int:
@@ -72,10 +90,13 @@ def split_for_telegram(text: str, max_chars: int = 4096) -> list[str]:
     chunks: list[str] = []
     rest = text
     while (size := _fit(rest, max_chars)) < len(rest):
+        if size == 0:
+            raise ValueError("max_chars too small to fit the next character")
         end, resume = _cut_point(rest[:size])
         chunks.append(rest[:end])
         rest = rest[resume:].lstrip()
-    chunks.append(rest)
+    if rest or not chunks:
+        chunks.append(rest)
     return chunks
 
 
