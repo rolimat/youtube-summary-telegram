@@ -85,3 +85,7 @@ def _normalise(text: str) -> str:
 def matches_title_filter(title: str, words: tuple[str, ...]) -> bool:
     folded = _normalise(title)
     return not words or any(_normalise(word) in folded for word in words)
+
+
+def is_short(video: Video) -> bool:
+    return "/shorts/" in video.url

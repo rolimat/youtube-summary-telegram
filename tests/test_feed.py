@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from conftest import make_video
 
 from youtube_summary import feed as feed_module
 from youtube_summary.config import Channel
@@ -11,6 +12,7 @@ from youtube_summary.feed import (
     FEED_URL,
     FeedError,
     fetch_channel_videos,
+    is_short,
     matches_title_filter,
     parse_feed,
 )
@@ -146,3 +148,15 @@ async def test_fetch_channel_videos_follows_redirects() -> None:
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         assert len(await fetch_channel_videos(http, CHANNEL)) == 2
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://www.youtube.com/shorts/abc", True),
+        ("https://www.youtube.com/watch?v=abc", False),
+        ("https://youtu.be/abc", False),
+    ],
+)
+def test_is_short(url: str, expected: bool) -> None:
+    assert is_short(make_video("abc", url=url)) is expected

@@ -18,6 +18,7 @@ from notebooklm.exceptions import (
     SourceError,
     SourceTimeoutError,
 )
+from notebooklm.types import SourceType
 
 from youtube_summary.summarizer import (
     NotebookAuthError,
@@ -31,6 +32,7 @@ from youtube_summary.summarizer import (
 @dataclass
 class _Source:
     id: str
+    kind: SourceType
 
 
 @dataclass
@@ -41,7 +43,7 @@ class _Answer:
 class _FakeClient:
     def __init__(
         self,
-        sources: list[str],
+        sources: Sequence[_Source],
         fail: Exception | None = None,
         conversation: str | None = None,
         ask_fail: Exception | None = None,
@@ -59,7 +61,7 @@ class _FakeClient:
         self.calls.append(("list", *args))
         if self._fail:
             raise self._fail
-        return [_Source(i) for i in self._sources]
+        return list(self._sources)
 
     async def delete_many(self, notebook_id: str, source_ids: Sequence[str]) -> None:
         self.calls.append(("delete_many", notebook_id, *source_ids))
@@ -98,7 +100,7 @@ def _summarizer(
 
 
 async def test_summarize_replaces_sources_and_returns_answer() -> None:
-    client = _FakeClient(["a", "b"])
+    client = _FakeClient([_Source("a", SourceType.YOUTUBE), _Source("b", SourceType.UNKNOWN)])
     answer = await _summarizer(client).summarize("https://y/v", "prompt")
     assert answer == "the answer"
     assert client.calls == [
@@ -213,3 +215,23 @@ async def test_quota_pause_defaults_to_an_hour_and_spares_ping() -> None:
     with pytest.raises(NotebookQuotaError):
         await summarizer.summarize("u", "p")
     assert len(client.calls) == calls
+
+
+async def test_summarize_keeps_document_sources_and_deletes_the_rest() -> None:
+    client = _FakeClient(
+        [
+            _Source("pdf", SourceType.PDF),
+            _Source("yt", SourceType.YOUTUBE),
+            _Source("txt", SourceType.PASTED_TEXT),
+            _Source("unk", SourceType.UNKNOWN),
+            _Source("web", SourceType.WEB_PAGE),
+        ]
+    )
+    await _summarizer(client).summarize("u", "p")
+    assert ("delete_many", "nb", "yt", "unk", "web") in client.calls
+
+
+async def test_summarize_skips_delete_when_only_documents_exist() -> None:
+    client = _FakeClient([_Source("pdf", SourceType.PDF), _Source("md", SourceType.MARKDOWN)])
+    await _summarizer(client).summarize("u", "p")
+    assert "delete_many" not in [call[0] for call in client.calls]

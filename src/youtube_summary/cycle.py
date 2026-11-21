@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Protocol
 
 from youtube_summary.config import AppConfig, Channel
-from youtube_summary.feed import FeedError, Video, matches_title_filter
+from youtube_summary.feed import FeedError, Video, is_short, matches_title_filter
 from youtube_summary.message import (
     EmptyAnswerError,
     format_auth_alert,
@@ -122,7 +122,8 @@ def _label(video: Video) -> str:
 
 def _is_candidate(state: SeenState, channel: Channel, video: Video, oldest: datetime) -> bool:
     return (
-        not state.is_seen(video.video_id)
+        not is_short(video)
+        and not state.is_seen(video.video_id)
         and video.video_id not in state.pending
         and video.published_at > oldest
         and matches_title_filter(video.title, channel.title_filter)

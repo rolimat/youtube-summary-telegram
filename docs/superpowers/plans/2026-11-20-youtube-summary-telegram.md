@@ -274,7 +274,7 @@ channels:
   - `class TelegramClient: __init__(self, bot_token: str, chat_id: str, http: httpx.AsyncClient)`; `async def send(self, text: str) -> bool` (spec Appendix A "Telegram send"; never raises; never logs the URL).
   - `class VideoNotReadyError(Exception)`, `class NotebookAuthError(Exception)`, `class SummarizerError(Exception)`
   - `class NotebookLMSummarizer: __init__(self, storage_state_path: Path, notebook_id: str, client_factory: Callable[[str], AbstractAsyncContextManager[Any]] | None = None)`. The default factory is `NotebookLMClient.from_storage`, used as `async with factory(path) as client` (no `await`; spec Appendix A).
-  - `async def summarize(self, video_url: str, prompt: str) -> str`. Flow per spec Appendix A, inside `asyncio.timeout(900)`: delete **all** sources, `add_url(..., wait=True)`, `chat.ask`, return `answer`.
+  - `async def summarize(self, video_url: str, prompt: str) -> str`. Flow per spec Appendix A, inside `asyncio.timeout(900)`: delete only the **video** sources (reference sources stay), `add_url(..., wait=True)`, `chat.ask`, return `answer`.
   - `async def ping(self) -> None`: `notebooks.list()` inside `asyncio.timeout(60)`.
   - Error mapping, shared by both methods, in this order:
     - `SourceError` → `VideoNotReadyError`
@@ -283,7 +283,7 @@ channels:
 
 - [ ] **Step 1: Failing test** `test_send_posts_html_payload`. Use a MockTransport that records the request. Assert the URL ends with `/bot<token>/sendMessage`, and the JSON has `parse_mode == "HTML"` and `disable_web_page_preview is True`. Assert the result is `True`. Implement.
 - [ ] **Step 2: Failing tests** `test_send_returns_false_on_non_200` and `test_send_returns_false_on_transport_error` (the transport raises `httpx.ConnectError`; assert with `caplog` that the token does not appear in any log record). Implement.
-- [ ] **Step 3: Write a fake NotebookLM client** in `tests/test_summarizer.py`. It has a `sources` object (`list`, `delete`, `add_url`), a `notebooks` object (`list`) and a `chat` object (`ask` returning an object with `.answer`), and it records calls. The factory returns an async context manager yielding it. Write the failing test `test_summarize_replaces_sources_and_returns_answer`: it asserts that every pre-existing source was deleted before `add_url` and that `answer` is returned. Implement.
+- [ ] **Step 3: Write a fake NotebookLM client** in `tests/test_summarizer.py`. It has a `sources` object (`list`, `delete`, `add_url`), a `notebooks` object (`list`) and a `chat` object (`ask` returning an object with `.answer`), and it records calls. The factory returns an async context manager yielding it. Write the failing test `test_summarize_replaces_sources_and_returns_answer`: it asserts that every pre-existing video source (and no other) was deleted before `add_url` and that `answer` is returned. Implement.
 - [ ] **Step 4: Failing test** `test_ping_lists_notebooks`. Implement.
 - [ ] **Step 5: Parametrized failing test** `test_summarizer_maps_library_errors`. Raise each library exception (and `TimeoutError`) from `add_url` and from `notebooks.list`, and assert the mapped error. Construct the library exceptions with the minimal constructor 0.8.6 accepts. Implement.
 - [ ] **Step 6: NotebookLM account and notebook (owner + agent, no commit).** The service uses a **new Google account**, not the one of the previous system.

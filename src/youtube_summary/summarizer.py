@@ -18,6 +18,7 @@ from notebooklm.exceptions import (
     RateLimitError,
     SourceError,
 )
+from notebooklm.types import SourceType
 
 _SUMMARIZE_TIMEOUT_SECONDS = 900
 _PING_TIMEOUT_SECONDS = 60
@@ -30,6 +31,21 @@ _ENTER_AUTH_ERRORS = (
     RequiredCookieValidationError,
     CookieRowError,
     json.JSONDecodeError,
+)
+_DOCUMENT_KINDS = frozenset(
+    {
+        SourceType.PASTED_TEXT,
+        SourceType.MARKDOWN,
+        SourceType.PDF,
+        SourceType.GOOGLE_DOCS,
+        SourceType.GOOGLE_SLIDES,
+        SourceType.GOOGLE_SPREADSHEET,
+        SourceType.DOCX,
+        SourceType.POWERPOINT,
+        SourceType.CSV,
+        SourceType.EPUB,
+        SourceType.EXCEL,
+    }
 )
 _LIBRARY_ERRORS = (NotebookLMError, TimeoutError, httpx.HTTPError, *_ENTER_AUTH_ERRORS)
 
@@ -105,8 +121,9 @@ class NotebookLMSummarizer:
 
     async def _reset(self, client: Any, video_url: str) -> None:
         sources = await client.sources.list(self._notebook_id)
-        if sources:
-            await client.sources.delete_many(self._notebook_id, [s.id for s in sources])
+        stale_ids = [s.id for s in sources if s.kind not in _DOCUMENT_KINDS]
+        if stale_ids:
+            await client.sources.delete_many(self._notebook_id, stale_ids)
         await client.sources.add_url(
             self._notebook_id, video_url, wait=True, wait_timeout=_SOURCE_WAIT_SECONDS
         )
