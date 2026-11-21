@@ -1,4 +1,6 @@
 name: youtube-summary-telegram
+# The deploy hook exports YST_UID/YST_GID (the deploy user). For a manual local run they
+# default to 1000; pass them in the shell if your ids differ.
 services:
   youtube-summary:
     build: .

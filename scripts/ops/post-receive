@@ -7,7 +7,7 @@
 # Manual run on the server: POST_RECEIVE_FORCE=1 <YST_HOME>/repo.git/hooks/post-receive
 set -eo pipefail
 
-YST_HOME="${YST_HOME:-$HOME/youtube-summary-telegram}"
+YST_HOME="${YST_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 GIT_DIR="$YST_HOME/repo.git"
 APP_DIR="$YST_HOME/app"
 ENV_FILE="$YST_HOME/config/.env"
@@ -38,9 +38,24 @@ should_deploy() {
 
 should_deploy || exit 0
 
+lock() {
+  if [ -n "${POST_RECEIVE_DRY_RUN:-}" ]; then
+    echo "[DRY RUN] flock $GIT_DIR/deploy.lock"
+  else
+    exec 9>"$GIT_DIR/deploy.lock"
+    flock 9
+  fi
+}
+
 echo "==> Deploying to $APP_DIR"
+lock
+run mkdir -p "$APP_DIR" "$YST_HOME/state" "$YST_HOME/secrets/notebooklm"
+run chmod 700 "$YST_HOME/secrets"
+YST_UID="$(id -u)"
+YST_GID="$(id -g)"
+export YST_UID YST_GID
 run git --work-tree="$APP_DIR" --git-dir="$GIT_DIR" checkout -f main
-[ -n "${POST_RECEIVE_DRY_RUN:-}" ] || cd "$APP_DIR"
+cd "$APP_DIR"
 run docker compose --env-file "$ENV_FILE" up -d --build
 run docker compose --env-file "$ENV_FILE" ps
 run docker image prune -f --filter label=com.docker.compose.project=youtube-summary-telegram

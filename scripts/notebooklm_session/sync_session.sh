@@ -10,6 +10,11 @@ source "$env_file"
 : "${SERVER_SSH_TARGET:?set SERVER_SSH_TARGET in server.env}"
 : "${SERVER_YST_HOME:?set SERVER_YST_HOME in server.env}"
 
+case "$SERVER_YST_HOME" in
+  /*) ;;
+  *) echo "SERVER_YST_HOME must be an absolute path (start with /)" >&2; exit 1 ;;
+esac
+
 export NOTEBOOKLM_PROFILE="${NOTEBOOKLM_PROFILE:-youtube-summary}"
 
 for tool in notebooklm jq rsync; do
@@ -26,5 +31,5 @@ fi
 remote_dir="$SERVER_YST_HOME/secrets/notebooklm"
 ssh "$SERVER_SSH_TARGET" "install -d -m 700 '$remote_dir'"
 rsync --chmod=u=rw,go-rwx \
-  "$HOME/.notebooklm/profiles/$NOTEBOOKLM_PROFILE/storage_state.json" \
-  "$SERVER_SSH_TARGET:$remote_dir/storage_state.json"
+  "${NOTEBOOKLM_HOME:-$HOME/.notebooklm}/profiles/$NOTEBOOKLM_PROFILE/storage_state.json" \
+  "$SERVER_SSH_TARGET:'$remote_dir/storage_state.json'"

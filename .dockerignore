@@ -1,10 +1,6 @@
-.git
-.venv
-tests
-local
-state
-secrets
-.env
-config.yml
-channels.yml
-scripts
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!src
+**/__pycache__
