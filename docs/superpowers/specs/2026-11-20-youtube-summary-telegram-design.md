@@ -326,9 +326,7 @@ from notebooklm.exceptions import AuthError, HeadlessReauthError, NotebookLMErro
 async with NotebookLMClient.from_storage(str(storage_state_path)) as client:
     for source in await client.sources.list(notebook_id):
         await client.sources.delete(notebook_id, source.id)
-    await client.sources.add_url(
-        notebook_id, video_url, wait=True
-    )  # raises SourceError if not processable
+    await client.sources.add_url(notebook_id, video_url, wait=True)   # raises SourceError if not processable
     result = await client.chat.ask(notebook_id, prompt)
     answer: str = result.answer
 
