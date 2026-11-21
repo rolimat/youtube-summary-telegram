@@ -1,6 +1,7 @@
 import html
 import json
 import re
+import string
 from dataclasses import dataclass
 
 from youtube_summary.feed import Video
@@ -11,6 +12,7 @@ _SENTENCE_GAP = re.compile(r"(?<=[.!?])\s+")
 _GAP = re.compile(r"\s+")
 _PARTIAL_ENTITY = re.compile(r"&#?\w*$")
 _CITATION = re.compile(r"\s*\[\d{1,2}(?:\s*[,\-\u2013]\s*\d{1,2})*\]")
+_ESCAPE = re.compile(r'\\(?:(?P<valid>["\\/bfnrt]|u[0-9a-fA-F]{4})|(?P<char>.?))', re.DOTALL)
 
 
 class EmptyAnswerError(ValueError): ...
@@ -22,13 +24,23 @@ class Summary:
     key_points: tuple[str, ...]
 
 
+def _repair_escapes(text: str) -> str:
+    def repair(match: re.Match[str]) -> str:
+        if match["valid"]:
+            return match.group(0)
+        char = match["char"]
+        return char if char in string.punctuation else "\\\\" + char
+
+    return _ESCAPE.sub(repair, text)
+
+
 def parse_answer(answer: str) -> Summary:
     fenced = _FENCE.search(answer)
     cleaned = _CITATION.sub("", fenced.group(1) if fenced else answer).strip()
     if not cleaned:
         raise EmptyAnswerError("empty answer")
     try:
-        data = json.loads(cleaned)
+        data = json.loads(_repair_escapes(cleaned), strict=False)
     except json.JSONDecodeError:
         return Summary(cleaned, ())
     text = data.get("summary") if isinstance(data, dict) else None
