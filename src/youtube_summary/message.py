@@ -61,7 +61,7 @@ def format_message(video: Video, summary: Summary, max_chars: int = 4096) -> lis
     whole = f"{header}\n\n{body}\n\n{footer}"
     if _units(whole) <= max_chars:
         return [whole]
-    pieces = split_for_telegram(body, max_chars - max(_units(header), _units(footer)) - 2)
+    pieces = split_for_telegram(body, max_chars - _units(header) - _units(footer) - 4)
     pieces[0] = f"{header}\n\n{pieces[0]}"
     pieces[-1] = f"{pieces[-1]}\n\n{footer}"
     return pieces

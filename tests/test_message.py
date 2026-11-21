@@ -162,3 +162,13 @@ def test_parse_answer_rejects_empty_answer() -> None:
 def test_parse_answer_citation_markers_only_short_numbers() -> None:
     assert parse_answer("Dato [3\u20135] y [1-2] y [7].") == Summary("Dato y y.", ())
     assert parse_answer("En [2024] subió") == Summary("En [2024] subió", ())
+
+
+def test_format_message_reserves_header_and_footer_room_in_every_chunk() -> None:
+    video = make_video()
+    (probe,) = format_message(video, Summary("x", ()), max_chars=200)
+    header_units = utf16_len(probe.split("\n\n")[0])
+    footer_units = utf16_len(FOOTER)
+    body_units = 200 - max(header_units, footer_units) - 2
+    chunks = format_message(video, Summary("x" * body_units, ()), max_chars=200)
+    assert all(utf16_len(chunk) <= 200 for chunk in chunks)
