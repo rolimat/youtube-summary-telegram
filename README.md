@@ -29,8 +29,8 @@ Every `poll_interval_minutes` the service runs one iteration:
   channel's `title_filter` are ignored.
 - **Summarise**: each video gets its own NotebookLM conversation; the notebook's sources are replaced
   by the video. A video NotebookLM cannot process yet is deferred to the next iteration.
-- **Send**: the message is stored in `seen.json` first, so a failed send is retried (up to 3 sends)
-  without calling NotebookLM again. A Telegram rejection stops that iteration's deliveries.
+- **Send**: the message is stored in `seen.json` first, so a failed send is retried (3 send attempts in total)
+  without calling NotebookLM again. At most 3 send attempts in total. A Telegram rejection stops that iteration's deliveries.
 - **Give up**: after 3 failed summarise attempts a video is dropped and logged as `Given up`.
 - **Telegram**: `parse_mode: HTML`. Long messages are split into chunks: header on the first,
   link on the last.
@@ -57,8 +57,9 @@ Every `poll_interval_minutes` the service runs one iteration:
 3. **Channel id.** Look for `channel_id` in the channel page source, or open
    `https://www.youtube.com/@handle` → "Share channel" → "Copy channel ID" (`UC...`).
 4. **Chat id.** Add the bot to the group, send a message, then open
-   `https://api.telegram.org/bot<bot-token>/getUpdates` and read `message.chat.id`
-   (negative for groups).
+   `https://api.telegram.org/bot<bot-token>/getUpdates`. With the bot's default privacy mode a plain
+   group message may not reach it: read `my_chat_member.chat.id` right after adding the bot, or
+   mention the bot in a message. Group ids are negative.
 
 ## Configuration
 
@@ -104,7 +105,10 @@ Config files live in `<YST_HOME>/config/`. Changing `config.yml` or `channels.ym
 
 ## Run locally
 
-With uv (needs `NOTEBOOKLM_STORAGE_STATE_PATH`, `CONFIG_DIR`, `STATE_DIR` and the Telegram variables in the environment):
+With uv (needs `NOTEBOOKLM_STORAGE_STATE_PATH`, `CONFIG_DIR`, `STATE_DIR` and the Telegram variables in the environment).
+`--once` runs one iteration regardless of `active_hours`, so it posts if there are new videos. Local runs
+use the notebook named in `config.yml` (its sources and conversation are replaced and quota is spent):
+use a separate test notebook, or stop the service first.
 
 ```bash
 uv sync
@@ -115,22 +119,23 @@ uv run youtube-summary          # loop
 With Docker (`<YST_HOME>` laid out as in the next section, `YST_HOME` set in its `config/.env`):
 
 ```bash
+mkdir -p <YST_HOME>/state <YST_HOME>/secrets/notebooklm
+export YST_UID=$(id -u) YST_GID=$(id -g)
 docker compose --env-file <YST_HOME>/config/.env up -d --build
 ```
 
-The container runs as `YST_UID:YST_GID` (default 1000:1000); export them if your ids differ.
-
 ## Deploy to your own server
 
-Layout, owned by the server user (uid `YST_UID`, default 1000):
+Layout. Everything under `<YST_HOME>` is owned by the deploy user; the hook runs the container with
+that user's uid/gid (1000 is only the default for manual compose runs without the exports):
 
 ```
 <YST_HOME>/
   repo.git/            bare repo with hooks/post-receive
   app/                 checked-out code (created by the hook)
   config/              .env, config.yml, channels.yml
-  state/               seen.json (created by the hook)
-  secrets/notebooklm/  storage_state.json (created by the hook)
+  state/               seen.json (created by the first run)
+  secrets/notebooklm/  storage_state.json (copied by sync_session.sh, Setup step 2)
 ```
 
 ```bash
@@ -142,7 +147,7 @@ git remote add production <ssh-target>:<YST_HOME>/repo.git
 git push production main
 ```
 
-The hook derives `YST_HOME` from its own location, creates `app/`, `state/` and `secrets/notebooklm`,
+The hook derives `YST_HOME` from its own location, creates only the directories `app/`, `state/` and `secrets/notebooklm`,
 checks out `main`, runs `docker compose up -d --build` as the deploy user's uid/gid, serialises deploys
 with `flock` and prunes only this project's dangling images. Pushing other refs does not deploy.
 Re-run it by hand with `POST_RECEIVE_FORCE=1 <YST_HOME>/repo.git/hooks/post-receive`.
@@ -171,15 +176,25 @@ the stored session fails `notebooklm auth check`.
 
 ## Operations
 
-Run these in `<YST_HOME>/app` on the server:
+Run manual compose commands on the server in `<YST_HOME>/app`, after exporting the deploy user's ids
+(otherwise compose recreates the container as 1000:1000):
 
 ```bash
+cd <YST_HOME>/app
+export YST_UID=$(id -u) YST_GID=$(id -g)
 docker compose --env-file <YST_HOME>/config/.env logs --tail 50 -f
 docker compose --env-file <YST_HOME>/config/.env restart   # after editing config.yml / channels.yml
+docker compose --env-file <YST_HOME>/config/.env up -d     # after editing config/.env (restart does not re-read it)
 ```
 
-- **Reset state**: delete `<YST_HOME>/state/seen.json` (no `sudo` needed); the next iteration
-  bootstraps again and sends nothing for existing videos.
+- **Reset state**: stop first, then delete, then start. Unsent pending messages in `seen.json` are
+  dropped; the next iteration bootstraps again and sends nothing for existing videos.
+
+  ```bash
+  docker compose --env-file <YST_HOME>/config/.env stop
+  rm <YST_HOME>/state/seen.json
+  docker compose --env-file <YST_HOME>/config/.env up -d
+  ```
 - **Add a channel**: edit `channels.yml`, then restart.
 - **Log lines**: `Given up summarising ...` / `Given up sending ...` means the video was dropped after
   3 failures and will not be retried. `Deferred, not processable yet` is retried next iteration.
@@ -194,6 +209,9 @@ Python minors, Docker tag changes and all majors. For `notebooklm-py`, run befor
 uv run python scripts/smoke_notebooklm.py <video-url> [--prompt-file prompt.txt]
 ```
 
+It replaces the configured notebook's sources and conversation and spends NotebookLM quota: point
+`CONFIG_DIR` at a config whose `config.yml` uses a separate test notebook, or stop the service first.
+
 (needs `NOTEBOOKLM_STORAGE_STATE_PATH` and `CONFIG_DIR` set.)
 
 Repo owner settings required: "Allow auto-merge", and a ruleset on `main` requiring the `test` and
@@ -204,8 +222,8 @@ Repo owner settings required: "Allow auto-merge", and a ruleset on `main` requir
 - **Auth alert / `session expired`**: renew the session (above).
 - **`Deferred, not processable yet`**: YouTube video not ready for NotebookLM (e.g. live or premiere);
   retried automatically.
-- **Telegram 400**: the HTML was rejected (see the logged body). The message is retried up to 3 times,
-  then `Given up sending`.
+- **Telegram send rejected** (HTTP error such as a 400 HTML parse error, or a network failure; see the
+  logged body): the message is retried, 3 send attempts in total, then `Given up sending`.
 - **Bootstrap aborted, feed failed**: a feed is unreachable or the `channel_id` is wrong; fix or remove it.
 - **Keepalive fails right after renewing the session**: renewing while a NotebookLM call is in flight
   can let the running container write back older cookies. Sync again.
