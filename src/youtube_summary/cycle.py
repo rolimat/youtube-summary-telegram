@@ -17,6 +17,7 @@ from youtube_summary.message import (
 from youtube_summary.state import PendingMessage, SeenState
 from youtube_summary.summarizer import (
     NotebookAuthError,
+    NotebookQuotaError,
     SummarizerError,
     VideoNotReadyError,
 )
@@ -61,6 +62,7 @@ class CycleResult:
     given_up: int = 0
     feed_errors: int = 0
     auth_failed: bool = False
+    quota_exhausted: bool = False
 
 
 async def run_cycle(deps: CycleDeps, now: datetime, *, within_hours: bool) -> CycleResult:
@@ -153,12 +155,28 @@ async def _process_video(
         result.deferred += 1
         logger.info("Deferred, not processable yet: %s", _label(video))
         return True
-    except NotebookAuthError:
+    except NotebookQuotaError:
+        result.quota_exhausted = True
+        logger.warning("NotebookLM quota exhausted; retrying next iteration")
+        return False
+    except NotebookAuthError as error:
         _auth_failed(result)
+        _summarize_failed(state, video, now, result, error)
         return False
     except Exception as error:
         _summarize_failed(state, video, now, result, error)
         return True
+    return await _store_and_send(deps, state, video, chunks, now, result)
+
+
+async def _store_and_send(
+    deps: CycleDeps,
+    state: SeenState,
+    video: Video,
+    chunks: list[str],
+    now: datetime,
+    result: CycleResult,
+) -> bool:
     state.clear_summarize_failure(video.video_id)
     state.pending[video.video_id] = PendingMessage(_label(video), chunks)
     state.save()
@@ -171,7 +189,7 @@ async def _process_video(
 def _summarize_failed(
     state: SeenState, video: Video, now: datetime, result: CycleResult, error: Exception
 ) -> None:
-    if not isinstance(error, (SummarizerError, EmptyAnswerError)):
+    if not isinstance(error, (SummarizerError, NotebookAuthError, EmptyAnswerError)):
         logger.exception("Unexpected error summarising %s", _label(video))
     count = state.record_summarize_failure(video.video_id, now)
     if count >= MAX_SUMMARIZE_FAILURES:

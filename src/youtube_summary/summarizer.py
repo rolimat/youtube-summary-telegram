@@ -10,7 +10,13 @@ from notebooklm import NotebookLMClient
 from notebooklm._auth.cookie_policy import RequiredCookieValidationError
 from notebooklm._auth.cookie_semantics import CookieRowError
 from notebooklm._auth.cookie_types import StorageStateValidationError
-from notebooklm.exceptions import AuthError, HeadlessReauthError, NotebookLMError, SourceError
+from notebooklm.exceptions import (
+    AuthError,
+    HeadlessReauthError,
+    NotebookLMError,
+    RateLimitError,
+    SourceError,
+)
 
 _SUMMARIZE_TIMEOUT_SECONDS = 900
 _PING_TIMEOUT_SECONDS = 60
@@ -35,12 +41,17 @@ class NotebookAuthError(Exception): ...
 class SummarizerError(Exception): ...
 
 
+class NotebookQuotaError(SummarizerError): ...
+
+
 @contextmanager
 def _mapped_errors() -> Iterator[None]:
     try:
         yield
     except SourceError as error:
         raise VideoNotReadyError(str(error)) from error
+    except RateLimitError as error:
+        raise NotebookQuotaError(str(error)) from error
     except _AUTH_ERRORS as error:
         raise NotebookAuthError(str(error)) from error
     except (NotebookLMError, TimeoutError, httpx.HTTPError) as error:

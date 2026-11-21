@@ -14,6 +14,7 @@ from notebooklm.exceptions import (
     AuthError,
     HeadlessReauthError,
     NotebookLMError,
+    RateLimitError,
     SourceError,
     SourceTimeoutError,
 )
@@ -21,6 +22,7 @@ from notebooklm.exceptions import (
 from youtube_summary.summarizer import (
     NotebookAuthError,
     NotebookLMSummarizer,
+    NotebookQuotaError,
     SummarizerError,
     VideoNotReadyError,
 )
@@ -122,6 +124,7 @@ _ERRORS: list[tuple[Exception, type[Exception]]] = [
     (RequiredCookieValidationError("x"), NotebookAuthError),
     (CookieRowError("f", "r"), NotebookAuthError),
     (json.JSONDecodeError("x", "", 0), NotebookAuthError),
+    (RateLimitError("x"), NotebookQuotaError),
     (NotebookLMError("x"), SummarizerError),
     (httpx.ConnectError("x"), SummarizerError),
     (TimeoutError(), SummarizerError),

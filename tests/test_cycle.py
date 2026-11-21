@@ -23,6 +23,7 @@ from youtube_summary.message import format_auth_alert
 from youtube_summary.state import PendingMessage, SeenState
 from youtube_summary.summarizer import (
     NotebookAuthError,
+    NotebookQuotaError,
     SummarizerError,
     VideoNotReadyError,
 )
@@ -227,6 +228,36 @@ async def test_summarize_auth_failure_stops_iteration(tmp_path: Path) -> None:
     assert sender.texts == [format_auth_alert(ENGLISH)]
     state = load(tmp_path)
     assert not state.is_seen("a") and not state.is_seen("b") and state.auth_alert_sent
+
+
+async def test_summarize_auth_failures_give_up_after_three(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    summarizer = FakeSummarizer(default=NotebookAuthError("expired"))
+    deps = make_deps(tmp_path, feed(make_video("a")), summarizer, FakeSender())
+
+    results = [await run(deps) for _ in range(3)]
+
+    assert [r.given_up for r in results] == [0, 0, 1]
+    assert load(tmp_path).is_seen("a")
+
+
+async def test_quota_exhausted_stops_iteration_without_failure(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    seed_state(tmp_path)
+    summarizer = FakeSummarizer(default=NotebookQuotaError("limit"))
+    videos = feed(make_video("a", hours_old=2), make_video("b"))
+    deps = make_deps(tmp_path, videos, summarizer, FakeSender())
+
+    with caplog.at_level(logging.WARNING):
+        result = await run(deps)
+
+    assert result.quota_exhausted and result.failed == 0 and not result.auth_failed
+    assert len(summarizer.summarize_calls) == 1
+    assert "quota exhausted" in caplog.text
+    state = load(tmp_path)
+    assert not state.is_seen("a") and not state.is_seen("b")
+    assert state.record_summarize_failure("a", NOW) == 1
 
 
 async def test_summarizer_error_gives_up_after_three_failures(tmp_path: Path) -> None:

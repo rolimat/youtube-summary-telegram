@@ -447,14 +447,14 @@ services:
 **Files:**
 - Create: `.github/dependabot.yml`, `.github/workflows/dependabot-automerge.yml`
 
-- [ ] **Step 1: `.github/dependabot.yml`.** `version: 2`. One entry per ecosystem, each with `directory: "/"`, `schedule: {interval: weekly}` and a commit-message prefix (`chore(deps)`, `ci(deps)` for actions):
+- [ ] **Step 1: `.github/dependabot.yml`.** `version: 2`. One entry per ecosystem, each with a 3-day `cooldown` and `directory: "/"`, `schedule: {interval: weekly}` and a commit-message prefix (`chore(deps)`, `ci(deps)` for actions):
   - `uv`. Group `python-minor-patch` with `patterns: ["*"]`, `exclude-patterns: ["notebooklm-py"]` and `update-types: ["minor", "patch"]`. `notebooklm-py` gets its own PRs.
   - `docker` (the Dockerfile base image digest).
   - `github-actions`, with all updates grouped.
   - `pre-commit`, with all updates grouped.
 - [ ] **Step 2: `.github/workflows/dependabot-automerge.yml`.** Trigger `pull_request`; set `permissions: contents: write, pull-requests: write`; `if: github.actor == 'dependabot[bot]'`. Steps:
   1. `dependabot/fetch-metadata` (latest major).
-  2. When `update-type` is `version-update:semver-patch` or `version-update:semver-minor`, or the ecosystem is `docker` (digest bump), **and** `dependency-names` does not contain `notebooklm-py`: `gh pr merge --auto --squash "$PR_URL"` with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`.
+  2. Auto-merge only Python patch updates, `github-actions`/`pre-commit` minor and patch updates, and `docker` digest-only updates; `notebooklm-py`, Python minors, Docker tag changes and majors stay manual. Merge with `gh pr merge --auto --squash "$PR_URL"` with `GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`.
   3. Otherwise do nothing; the PR waits for the owner.
 - [ ] **Step 3: Owner-only GitHub settings** (documented in the README, not code):
   - Settings → General → "Allow auto-merge" on.

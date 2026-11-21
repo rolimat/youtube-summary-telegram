@@ -146,7 +146,11 @@ on SIGTERM). One iteration:
    - Video not processable yet (`SourceError`, e.g. a premiere or a live stream still
      running): leave it unseen; retried next iteration until it ages out. This costs
      no chat query.
-   - Auth failure: the auth-alert path, end the iteration. Videos stay unseen.
+   - Auth failure: the auth-alert path, end the iteration. The video also counts toward
+     the 3-failure cap below, so one video is not re-asked forever. Videos stay unseen
+     until then.
+   - Chat quota exhausted (`RateLimitError`): log a warning, record no failure, end the
+     iteration. Videos stay unseen and are retried until they age out.
    - Other NotebookLM error or timeout: increment the video's failure count. At 3
      failures, log an error and mark it seen (given up). Otherwise retry next iteration.
    - Success: clear its failure count, build the message, split it if > 4096 chars,
@@ -205,12 +209,13 @@ processed after the session is renewed, if still inside the age window.
 
 ## Dependency updates
 
-- `.github/dependabot.yml`, weekly, ecosystems `uv`, `docker` (base image digest),
-  `github-actions`, `pre-commit`. Minor and patch updates are grouped per ecosystem.
-- `.github/workflows/dependabot-automerge.yml` enables auto-merge (squash) for
-  Dependabot PRs that are patch or minor, except `notebooklm-py`. `notebooklm-py`
-  and every major update stay manual: they need the live smoke check, because CI
-  never talks to NotebookLM.
+- `.github/dependabot.yml`, weekly with a 3-day cooldown, ecosystems `uv`, `docker`
+  (base image digest), `github-actions`, `pre-commit`.
+- `.github/workflows/dependabot-automerge.yml` enables auto-merge (squash) only for
+  Python patch updates, GitHub Actions and pre-commit minor and patch updates, and
+  Docker digest-only updates. `notebooklm-py`, Python minors, Docker tag changes and
+  every major update stay manual: they need the live smoke check, because CI never
+  talks to NotebookLM.
 - Auto-merge is safe only with a ruleset on `main` that requires the CI checks
   (owner as bypass actor, so direct pushes keep working). Merging never deploys:
   deploy stays a manual `git push production main`.
