@@ -1,4 +1,3 @@
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -16,10 +15,11 @@ def make_video(
     hours_old: float = 1,
     title: str = "Título",
     channel_name: str = "Chan",
+    url: str | None = None,
 ) -> Video:
     return Video(
         video_id=video_id,
-        url=f"https://www.youtube.com/watch?v={video_id}",
+        url=url or f"https://www.youtube.com/watch?v={video_id}",
         title=title,
         published_at=NOW - timedelta(hours=hours_old),
         channel_name=channel_name,
@@ -78,13 +78,18 @@ class FakeSender:
         return self.results.pop(0) if self.results else True
 
 
-def fake_fetch(
-    mapping: dict[str, list[Video] | Exception],
-) -> Callable[[Channel], Awaitable[list[Video]]]:
-    async def fetch(channel: Channel) -> list[Video]:
-        result = mapping.get(channel.name, [])
+class FakeFetch:
+    def __init__(self, mapping: dict[str, list[Video] | Exception]) -> None:
+        self.mapping = mapping
+        self.calls: list[str] = []
+
+    async def __call__(self, channel: Channel) -> list[Video]:
+        self.calls.append(channel.name)
+        result = self.mapping.get(channel.name, [])
         if isinstance(result, Exception):
             raise result
         return result
 
-    return fetch
+
+def fake_fetch(mapping: dict[str, list[Video] | Exception]) -> FakeFetch:
+    return FakeFetch(mapping)

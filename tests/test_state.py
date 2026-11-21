@@ -1,14 +1,13 @@
 import os
 import stat
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+from conftest import NOW
 
 from youtube_summary import state as state_module
 from youtube_summary.state import PendingMessage, SeenState, UnsupportedStateVersionError
-
-NOW = datetime(2026, 11, 20, 12, 0, tzinfo=UTC)
 
 
 def test_load_returns_none_when_file_missing(tmp_path: Path) -> None:

@@ -1,9 +1,8 @@
 import re
-from datetime import UTC, datetime
 
 import pytest
+from conftest import make_video
 
-from youtube_summary.feed import Video
 from youtube_summary.message import (
     EmptyAnswerError,
     Summary,
@@ -16,10 +15,6 @@ from youtube_summary.message import (
 
 def utf16_len(text: str) -> int:
     return len(text.encode("utf-16-le")) // 2
-
-
-def make_video(title: str = "Título", url: str = "https://youtu.be/x") -> Video:
-    return Video("x", url, title, datetime(2026, 1, 1, tzinfo=UTC), "Canal")
 
 
 def test_parse_answer_reads_json() -> None:
@@ -47,23 +42,23 @@ def test_parse_answer_json_without_summary_falls_back() -> None:
 
 
 def test_format_message_escapes_html_specials() -> None:
-    video = make_video('S&P 500 <live> "2025"', 'https://youtu.be/x?a=1&b="2"')
+    video = make_video("x", title='S&P 500 <live> "2025"', url='https://youtu.be/x?a=1&b="2"')
     (message,) = format_message(video, Summary("a < b & c", ("p > q",)))
-    assert '<b>Canal</b> — S&amp;P 500 &lt;live&gt; "2025"' in message
+    assert '<b>Chan</b> — S&amp;P 500 &lt;live&gt; "2025"' in message
     assert "a &lt; b &amp; c" in message
     assert "• p &gt; q" in message
     assert '<a href="https://youtu.be/x?a=1&amp;b=&quot;2&quot;">Ver vídeo</a>' in message
 
 
 def test_format_message_omits_empty_key_points() -> None:
-    assert "•" not in format_message(make_video(), Summary("Texto", ()))[0]
+    assert "•" not in format_message(make_video("x"), Summary("Texto", ()))[0]
 
 
 def test_format_message_layout_and_untitled() -> None:
-    chunks = format_message(make_video(title=""), Summary("Texto", ("A", "B")))
+    chunks = format_message(make_video("x", title=""), Summary("Texto", ("A", "B")))
     assert chunks == [
-        "🎬 <b>Canal</b> — Sin título\n\nTexto\n\n• A\n• B\n\n"
-        '🔗 <a href="https://youtu.be/x">Ver vídeo</a>'
+        "🎬 <b>Chan</b> — Sin título\n\nTexto\n\n• A\n• B\n\n"
+        '🔗 <a href="https://www.youtube.com/watch?v=x">Ver vídeo</a>'
     ]
 
 
@@ -117,14 +112,14 @@ def test_split_for_telegram_keeps_paragraph_breaks_inside_chunks() -> None:
     assert "\n\n" in chunks[0]
 
 
-FOOTER = '🔗 <a href="https://youtu.be/x">Ver vídeo</a>'
+FOOTER = '🔗 <a href="https://www.youtube.com/watch?v=x">Ver vídeo</a>'
 
 
 def test_format_message_long_body_keeps_header_and_footer_intact() -> None:
-    chunks = format_message(make_video(), Summary("palabra " * 2000, ("A &",)))
+    chunks = format_message(make_video("x"), Summary("palabra " * 2000, ("A &",)))
     assert len(chunks) > 1
     assert all(utf16_len(chunk) <= 4096 for chunk in chunks)
-    assert chunks[0].startswith("🎬 <b>Canal</b> — Título\n\n")
+    assert chunks[0].startswith("🎬 <b>Chan</b> — Título\n\n")
     assert chunks[-1].endswith(FOOTER)
     for chunk in chunks:
         assert re.sub(r"<a href=[^>]*>|</a>|<b>|</b>", "", chunk).count("<") == 0
@@ -132,7 +127,7 @@ def test_format_message_long_body_keeps_header_and_footer_intact() -> None:
 
 
 def test_format_message_question_mark_title_does_not_become_cut_point() -> None:
-    chunks = format_message(make_video(title="¿Qué pasa?"), Summary("palabra " * 2000, ()))
+    chunks = format_message(make_video("x", title="¿Qué pasa?"), Summary("palabra " * 2000, ()))
     assert "palabra" in chunks[0]
 
 
@@ -165,7 +160,7 @@ def test_parse_answer_citation_markers_only_short_numbers() -> None:
 
 
 def test_format_message_reserves_header_and_footer_room_in_every_chunk() -> None:
-    video = make_video()
+    video = make_video("x")
     (probe,) = format_message(video, Summary("x", ()), max_chars=200)
     header_units = utf16_len(probe.split("\n\n")[0])
     footer_units = utf16_len(FOOTER)

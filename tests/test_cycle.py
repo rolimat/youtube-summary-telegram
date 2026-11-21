@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from conftest import (
     NOW,
+    FakeFetch,
     FakeSender,
     FakeSummarizer,
     fake_fetch,
@@ -62,7 +63,7 @@ async def run(deps: CycleDeps, *, within_hours: bool = True) -> CycleResult:
     return await run_cycle(deps, NOW, within_hours=within_hours)
 
 
-def feed(*videos: Video) -> FetchVideos:
+def feed(*videos: Video) -> FakeFetch:
     return fake_fetch({"Chan": list(videos)})
 
 
@@ -106,12 +107,7 @@ async def test_keepalive_runs_every_iteration_even_outside_hours(tmp_path: Path)
 
 async def test_keepalive_auth_failure_alerts_once(tmp_path: Path) -> None:
     seed_state(tmp_path)
-    fetched: list[Channel] = []
-
-    async def fetch(channel: Channel) -> list[Video]:
-        fetched.append(channel)
-        return [make_video("a")]
-
+    fetch = feed(make_video("a"))
     summarizer = FakeSummarizer(ping_error=NotebookAuthError("expired"))
     sender = FakeSender()
     deps = make_deps(tmp_path, fetch, summarizer, sender)
@@ -121,10 +117,17 @@ async def test_keepalive_auth_failure_alerts_once(tmp_path: Path) -> None:
 
     assert result.auth_failed and again.auth_failed
     assert sender.texts == [format_auth_alert()]
-    assert fetched == [] and summarizer.summarize_calls == []
+    assert fetch.calls == [] and summarizer.summarize_calls == []
     assert load(tmp_path).auth_alert_sent
-    summarizer.ping_error = None
-    await run(deps, within_hours=False)
+
+
+async def test_successful_ping_clears_auth_alert_flag(tmp_path: Path) -> None:
+    state = seed_state(tmp_path)
+    state.auth_alert_sent = True
+    state.save()
+
+    await run(make_deps(tmp_path, feed()), within_hours=False)
+
     assert not load(tmp_path).auth_alert_sent
 
 
@@ -150,7 +153,7 @@ async def test_skips_seen_pending_old_and_filtered_videos(tmp_path: Path) -> Non
     ]
     summarizer = FakeSummarizer()
     channel = make_channel(title_filter=("TÍTULO",))
-    deps = make_deps(tmp_path, feed(*videos), summarizer, FakeSender([False]), (channel,))
+    deps = make_deps(tmp_path, feed(*videos), summarizer, channels=(channel,))
 
     await run(deps)
 
@@ -244,28 +247,31 @@ async def test_failed_feed_does_not_block_other_channels(tmp_path: Path) -> None
     assert result.feed_errors == 1 and result.sent == 1
 
 
+async def send_round(
+    tmp_path: Path, summarizer: FakeSummarizer, results: list[bool]
+) -> tuple[FakeSender, CycleResult]:
+    sender = FakeSender(results)
+    result = await run(make_deps(tmp_path, feed(make_video("a")), summarizer, sender))
+    return sender, result
+
+
 async def test_telegram_failure_keeps_summary_and_never_resummarises(tmp_path: Path) -> None:
     seed_state(tmp_path)
     long_answer = '{"summary": "' + "Una frase de relleno bastante larga. " * 150 + '"}'
     summarizer = FakeSummarizer(default=long_answer)
-    fetch = feed(make_video("a"))
-    first_sender = FakeSender([True, False])
 
-    await run(make_deps(tmp_path, fetch, summarizer, first_sender))
-
+    first, _ = await send_round(tmp_path, summarizer, [True, False])
     pending = load(tmp_path).pending["a"]
-    assert len(first_sender.texts) == 2 and pending.send_attempts == 1
-    assert pending.chunks == [first_sender.texts[1]]
-    second, third = FakeSender([False]), FakeSender([False])
-    await run(make_deps(tmp_path, fetch, summarizer, second))
-    result = await run(make_deps(tmp_path, fetch, summarizer, third))
+    assert len(first.texts) == 2 and pending.send_attempts == 1
+    assert pending.chunks == [first.texts[1]]
+    second, _ = await send_round(tmp_path, summarizer, [False])
+    third, result = await send_round(tmp_path, summarizer, [False])
 
     state = load(tmp_path)
     assert state.is_seen("a") and state.pending == {} and result.given_up == 1
     assert len(summarizer.summarize_calls) == 1
-    first_chunk = first_sender.texts[0]
-    assert (first_sender.texts + second.texts + third.texts).count(first_chunk) == 1
-    assert second.texts == third.texts == [first_sender.texts[1]]
+    assert (first.texts + second.texts + third.texts).count(first.texts[0]) == 1
+    assert second.texts == third.texts == [first.texts[1]]
 
 
 async def test_pending_is_retried_and_sent(tmp_path: Path) -> None:
@@ -347,3 +353,114 @@ async def test_successful_summary_clears_failure_count_before_sending(tmp_path: 
 
     saved = load(tmp_path)
     assert "a" in saved.pending and saved.record_summarize_failure("a", NOW) == 1
+
+
+async def test_bootstrap_with_failed_feed_saves_nothing(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    fetch = fake_fetch({"Chan": [make_video("a")], "Other": FeedError("HTTP 404")})
+    deps = make_deps(tmp_path, fetch, channels=(make_channel(), make_channel("Other")))
+
+    result = await run(deps)
+
+    assert not result.bootstrapped and result.feed_errors == 1
+    assert not deps.state_path.exists()
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert any("Other" in message and "channels.yml" in message for message in errors)
+
+
+async def test_unexpected_summarize_error_counts_as_failure(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    summarizer = FakeSummarizer(default=RuntimeError("bug"))
+    deps = make_deps(tmp_path, feed(make_video("a")), summarizer)
+
+    results = [await run(deps) for _ in range(3)]
+
+    assert [r.failed for r in results] == [1, 1, 0] and results[2].given_up == 1
+    assert load(tmp_path).is_seen("a")
+
+
+async def test_summarize_auth_failure_alerts_once_across_iterations(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    summarizer = FakeSummarizer(default=NotebookAuthError("expired"))
+    sender = FakeSender()
+    deps = make_deps(tmp_path, feed(make_video("a")), summarizer, sender)
+
+    await run(deps)
+    await run(deps)
+
+    assert sender.texts == [format_auth_alert()] and summarizer.ping_calls == 2
+
+
+async def test_auth_alert_waits_for_active_hours(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    summarizer = FakeSummarizer(ping_error=NotebookAuthError("expired"))
+    sender = FakeSender()
+    deps = make_deps(tmp_path, feed(), summarizer, sender)
+
+    night = await run(deps, within_hours=False)
+    assert night.auth_failed and sender.texts == []
+    await run(deps)
+
+    assert sender.texts == [format_auth_alert()]
+
+
+async def test_telegram_outage_stops_new_summaries(tmp_path: Path) -> None:
+    state = seed_state(tmp_path)
+    state.pending["p"] = PendingMessage("Chan — Antiguo", ["resto"])
+    state.pending["q"] = PendingMessage("Chan — Otro", ["más"])
+    state.save()
+    summarizer, sender = FakeSummarizer(), FakeSender([False])
+
+    await run(make_deps(tmp_path, feed(make_video("a")), summarizer, sender))
+
+    assert sender.texts == ["resto"] and summarizer.summarize_calls == []
+
+
+async def test_rejected_new_video_stops_further_candidates(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    summarizer, sender = FakeSummarizer(), FakeSender([False])
+    videos = feed(make_video("a", hours_old=2), make_video("b"))
+
+    await run(make_deps(tmp_path, videos, summarizer, sender))
+
+    assert len(summarizer.summarize_calls) == 1 and "a" in load(tmp_path).pending
+
+
+async def test_stop_event_skips_feed_fetching(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    fetch = feed(make_video("a"))
+    deps = make_deps(tmp_path, fetch)
+    deps.stop.set()
+
+    await run(deps)
+
+    assert fetch.calls == []
+
+
+async def test_stop_event_skips_bootstrap(tmp_path: Path) -> None:
+    fetch = feed(make_video("a"))
+    deps = make_deps(tmp_path, fetch)
+    deps.stop.set()
+
+    result = await run(deps)
+
+    assert fetch.calls == [] and not result.bootstrapped and not deps.state_path.exists()
+
+
+async def test_feeds_are_fetched_concurrently(tmp_path: Path) -> None:
+    seed_state(tmp_path)
+    other_started = asyncio.Event()
+
+    async def fetch(channel: Channel) -> list[Video]:
+        if channel.name == "Other":
+            other_started.set()
+            return [make_video("b", channel_name="Other")]
+        await other_started.wait()
+        return [make_video("a")]
+
+    deps = make_deps(tmp_path, fetch, channels=(make_channel(), make_channel("Other")))
+    async with asyncio.timeout(1):
+        result = await run(deps)
+
+    assert result.sent == 2
