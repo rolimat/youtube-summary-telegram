@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Push-to-deploy hook. Install (placeholders, run from the repo root):
+#   ssh <ssh-target> "git init --bare <YST_HOME>/repo.git"
+#   scp scripts/ops/post-receive <ssh-target>:<YST_HOME>/repo.git/hooks/post-receive
+#   ssh <ssh-target> "chmod +x <YST_HOME>/repo.git/hooks/post-receive"
+#   git remote add production <ssh-target>:<YST_HOME>/repo.git
+# Manual run on the server: POST_RECEIVE_FORCE=1 <YST_HOME>/repo.git/hooks/post-receive
+set -eo pipefail
+
+YST_HOME="${YST_HOME:-$HOME/youtube-summary-telegram}"
+GIT_DIR="$YST_HOME/repo.git"
+APP_DIR="$YST_HOME/app"
+ENV_FILE="$YST_HOME/config/.env"
+ZEROS="0000000000000000000000000000000000000000"
+
+run() {
+  if [ -n "${POST_RECEIVE_DRY_RUN:-}" ]; then
+    echo "[DRY RUN] $*"
+  else
+    "$@"
+  fi
+}
+
+should_deploy() {
+  if [ -n "${POST_RECEIVE_FORCE:-}" ] || [ -t 0 ]; then
+    return 0
+  fi
+  local oldrev newrev refname refs=""
+  while read -r oldrev newrev refname; do
+    refs="$refs $refname"
+    if [ "$refname" = "refs/heads/main" ] && [ "$newrev" != "$ZEROS" ]; then
+      return 0
+    fi
+  done
+  echo "==> No deploy: no update of refs/heads/main (received:${refs})"
+  return 1
+}
+
+should_deploy || exit 0
+
+echo "==> Deploying to $APP_DIR"
+run git --work-tree="$APP_DIR" --git-dir="$GIT_DIR" checkout -f main
+[ -n "${POST_RECEIVE_DRY_RUN:-}" ] || cd "$APP_DIR"
+run docker compose --env-file "$ENV_FILE" up -d --build
+run docker compose --env-file "$ENV_FILE" ps
+run docker image prune -f --filter label=com.docker.compose.project=youtube-summary-telegram
+echo "==> Deploy complete!"

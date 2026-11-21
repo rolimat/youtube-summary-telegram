@@ -1,0 +1,19 @@
+name: youtube-summary-telegram
+services:
+  youtube-summary:
+    build: .
+    restart: unless-stopped
+    user: "${YST_UID:-1000}:${YST_GID:-1000}"
+    stop_grace_period: 2m
+    env_file: ${YST_HOME:?set YST_HOME}/config/.env
+    environment:
+      CONFIG_DIR: /config
+      STATE_DIR: /state
+      NOTEBOOKLM_STORAGE_STATE_PATH: /secrets/notebooklm/storage_state.json
+    volumes:
+      - ${YST_HOME}/config:/config:ro
+      - ${YST_HOME}/state:/state
+      - ${YST_HOME}/secrets/notebooklm:/secrets/notebooklm
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}

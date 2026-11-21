@@ -25,3 +25,9 @@ jobs:
       - run: uv sync --locked
       - run: uv run pre-commit run --all-files
       - run: uv run pytest -q --cov=youtube_summary --cov-fail-under=90 --cov-report=term-missing:skip-covered
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t youtube-summary:ci .
