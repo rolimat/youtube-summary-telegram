@@ -4,34 +4,48 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "chore(deps)"
     groups:
-      python-minor-patch:
+      python-patch:
         patterns: ["*"]
         exclude-patterns: ["notebooklm-py"]
-        update-types: ["minor", "patch"]
+        update-types: ["patch"]
+      python-minor:
+        patterns: ["*"]
+        exclude-patterns: ["notebooklm-py"]
+        update-types: ["minor"]
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "chore(deps)"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "ci(deps)"
     groups:
       actions:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
   - package-ecosystem: pre-commit
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: "chore(deps)"
     groups:
       pre-commit:
         patterns: ["*"]
+        update-types: ["minor", "patch"]
